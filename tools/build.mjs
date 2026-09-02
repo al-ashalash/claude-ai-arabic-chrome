@@ -65,21 +65,35 @@ fs.writeFileSync(path.join(EXT, "languages.json"), JSON.stringify({ default: pay
 
 console.log(`\nBuilt ${langs.length} language(s) -> user/extension/dictionary.js`);
 
-// --- versioning: bump the manifest PATCH whenever the total string count changes ---
+// --- الإصدار مفصول عن عدّاد القاموس (المرحلة ٠ من خطة الإطلاق) ---
+// كان البناء يرفع manifest.version آليًا كلما تغيّر عدد المفردات، وقرارُ المالك تثبيتُ
+// 1.0.0 حتى النشر الأول — فأُعيد الرقم يدويًا أربع مرات، وبناءٌ منسيّ واحد قبل الرفع
+// كان سيشحن للمتجر رقمًا لا يمكن إنزاله. عمليةٌ يدوية تصحّح عمليةً آلية = عطل ينتظر النسيان.
+// الآن: الرقم لا يُمسّ إلا بأمر صريح `--bump patch|minor|major`، وversion_name يُحدَّث
+// دائمًا ليحمل عدد المفردات الصادق (فهو وصف لا هوية).
 const manifestPath = path.join(EXT, "manifest.json");
 if (fs.existsSync(manifestPath)) {
   const mf = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const total = Object.values(dicts).reduce((a, d) => a + Object.keys(d.strings || {}).length, 0);
-  const prev = parseInt((String(mf.version_name || "").match(/(\d+)\s*عبارة/) || [])[1] || "-1", 10);
-  if (prev !== total) {
+
+  const bumpArg = process.argv.find((a) => a.startsWith("--bump"));
+  if (bumpArg) {
+    const kind = (bumpArg.split("=")[1] || process.argv[process.argv.indexOf(bumpArg) + 1] || "patch").toLowerCase();
     const p = String(mf.version || "1.0.0").split(".").map((x) => parseInt(x, 10) || 0);
     while (p.length < 3) p.push(0);
-    p[2] += 1;
+    if (kind === "major") { p[0]++; p[1] = 0; p[2] = 0; }
+    else if (kind === "minor") { p[1]++; p[2] = 0; }
+    else p[2]++;
     mf.version = p.join(".");
-    mf.version_name = `${mf.version} — قاموس ${total} عبارة`;
-    fs.writeFileSync(manifestPath, JSON.stringify(mf, null, 2) + "\n", "utf8");
-    console.log(`↑ version -> ${mf.version} (${total} strings)`);
-  } else {
-    console.log(`= version unchanged (${total} strings)`);
+    console.log(`↑ version -> ${mf.version} (--bump ${kind})`);
   }
+
+  const newName = `${mf.version} — قاموس ${total} عبارة`;
+  if (mf.version_name !== newName) {
+    mf.version_name = newName;
+    console.log(`  version_name -> ${newName}`);
+  } else {
+    console.log(`= version ${mf.version} (${total} strings)`);
+  }
+  fs.writeFileSync(manifestPath, JSON.stringify(mf, null, 2) + "\n", "utf8");
 }

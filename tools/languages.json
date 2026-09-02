@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "base": "en",
+  "default": "ar",
+  "languages": [
+    { "code": "en", "endonym": "English", "englishName": "English", "direction": "ltr", "isBase": true,  "font": "",                                                                                        "dictionary": "en.json", "enabled": false, "note_ar": "اللغة الأساس — تُعرض كما هي بلا ترجمة", "note_en": "Base language — shown as-is" },
+    { "code": "ar", "endonym": "العربية", "englishName": "Arabic",  "direction": "rtl", "isBase": false, "font": "\"Noto Naskh Arabic\", \"IBM Plex Sans Arabic\", \"Segoe UI\", Tahoma, sans-serif",           "dictionary": "ar.json", "enabled": true,  "note_ar": "العربية — من اليمين إلى اليسار", "note_en": "Arabic — right-to-left" },
+    { "code": "he", "endonym": "עברית",  "englishName": "Hebrew",  "direction": "rtl", "isBase": false, "font": "\"Noto Sans Hebrew\", Arial, sans-serif",                                                    "dictionary": "he.json", "enabled": false, "note_ar": "العبرية — يمين لليسار", "note_en": "Hebrew — RTL" },
+    { "code": "fa", "endonym": "فارسی",  "englishName": "Persian", "direction": "rtl", "isBase": false, "font": "\"Vazirmatn\", \"Noto Naskh Arabic\", Tahoma, sans-serif",                                    "dictionary": "fa.json", "enabled": false, "note_ar": "الفارسية — يمين لليسار", "note_en": "Persian — RTL" },
+    { "code": "ur", "endonym": "اردو",   "englishName": "Urdu",    "direction": "rtl", "isBase": false, "font": "\"Noto Nastaliq Urdu\", \"Noto Naskh Arabic\", serif",                                        "dictionary": "ur.json", "enabled": false, "note_ar": "الأردية (نستعليق) — يمين لليسار", "note_en": "Urdu — RTL Nastaliq" },
+    { "code": "es", "endonym": "Español", "englishName": "Spanish", "direction": "ltr", "isBase": false, "font": "",                                                                                        "dictionary": "es.json", "enabled": false, "note_ar": "الإسبانية — يسار لليمين", "note_en": "Spanish — LTR" }
+  ]
+}

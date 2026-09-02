@@ -1,0 +1,135 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>terms test</title>
+<!--
+  اختبار «الكلمات المحفوظة» بعد إضافة البحث في القاموس الأساسي (2026-08-15).
+  البلاغ: «لا تعرض الكلمات الموجودة في القاموس حتى تعدل» — فكان على المستخدم أن يكتب
+  النصّ الإنجليزي حرفيًّا من ذاكرته ليصحّح ترجمةً رآها، وهو متعذّر عمليًّا.
+
+  يحمّل هذا الملف options.js الحقيقي فوق نسخة من عناصر صفحة الإعدادات، بقشرة chrome
+  وهمية، ويتحقق من: البحث بالعربية وبالإنجليزية، والحفظ، ووسم المصدر، واستعادة الأصل،
+  وحارس «المطابقة للأصل لا تُخزَّن»، وسقف النتائج.
+-->
+<style>body{font-family:system-ui;padding:16px;max-width:960px;margin:auto}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
+.ok{color:#127a2b;font-weight:700}.bad{color:#b00;font-weight:700}
+#stage{position:absolute;left:-9999px;top:0}
+.term{display:grid;grid-template-columns:1fr 1fr auto;gap:8px}</style>
+
+<h1>اختبار الكلمات المحفوظة والبحث في القاموس</h1>
+<table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th><th></th></tr></thead><tbody></tbody></table>
+
+<!-- عناصر صفحة الإعدادات التي يمسّها options.js (مخفية) -->
+<div id="stage">
+  <span id="aboutName"></span><span id="aboutVersion"></span>
+  <input id="newSrc"><input id="newDst"><button id="addTerm"></button>
+  <input id="termSearch"><div id="termsList"></div><div id="termsStatus"></div>
+  <button id="exportOv"></button><button id="importOvBtn"></button>
+  <input type="file" id="importOvFile"><button id="clearAllOv"></button>
+  <input type="checkbox" id="enabled"><input type="checkbox" id="rtl"><input type="checkbox" id="chatrtl">
+  <span id="scanCount"></span><button id="startScan"></button><button id="cancelScan"></button>
+  <div id="scanStatus"></div><div id="scanActions"></div>
+  <button id="scanExport"></button><button id="scanImportBtn"></button>
+  <input type="file" id="importTransFile"><button id="resetAll"></button><div id="dangerStatus"></div>
+</div>
+
+<script>
+window.__store = { cml_overrides: { ar: { "Zzq my own correction": "تصحيحي الخاص" } } };
+window.chrome = {
+  runtime: { getManifest: function () { return { short_name: "تعريب كلود للويب", version: "test", version_name: "test" }; } },
+  storage: {
+    local: {
+      get: function (k, cb) { cb(JSON.parse(JSON.stringify(window.__store))); },
+      set: function (o, cb) { for (var k in o) window.__store[k] = o[k]; if (cb) cb(); },
+      remove: function (k, cb) { (Array.isArray(k) ? k : [k]).forEach(function (x) { delete window.__store[x]; }); if (cb) cb(); },
+    },
+    onChanged: { addListener: function () {} },
+  },
+};
+</script>
+<script src="../extension/dictionary.js"></script>
+<script src="../extension/options.js"></script>
+<script>
+var tb = document.querySelector("#tbl tbody"), pass = 0, total = 0;
+function check(name, expect, got) {
+  total++; var ok = String(expect) === String(got); if (ok) pass++;
+  var tr = document.createElement("tr");
+  [name, expect, got].forEach(function (v) { var td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+  var s = document.createElement("td"); s.className = ok ? "ok" : "bad"; s.textContent = ok ? "✓" : "✗"; tr.appendChild(s);
+  tb.appendChild(tr);
+}
+var BOX = document.getElementById("termSearch"), LIST = document.getElementById("termsList");
+var BASE = CLAUDE_L10N.dicts.ar.strings;
+function search(q) { return new Promise(function (r) { BOX.value = q; BOX.dispatchEvent(new Event("input")); setTimeout(r, 350); }); }
+function rows() { return [].slice.call(LIST.querySelectorAll(".term")); }
+function rowFor(en) { return rows().find(function (r) { return r.querySelector(".src").textContent.indexOf(en) === 0; }); }
+function mine() { return Object.keys((window.__store.cml_overrides || {}).ar || {}); }
+
+setTimeout(function () {
+  Promise.resolve()
+    // بلا بحث: تصحيحات المستخدم وحدها
+    .then(function () { return search(""); })
+    .then(function () {
+      check("بلا بحث: تُعرض تصحيحاتك وحدها", 1, rows().length);
+      check("بلا بحث: لا تُعرض مفردات القاموس", "false", String(LIST.innerText.indexOf("من القاموس الأساسي") >= 0));
+      return search("م"); // حرف واحد
+    })
+    .then(function () {
+      check("حرف واحد لا يبحث في القاموس", "false", String(LIST.innerText.indexOf("من القاموس الأساسي") >= 0));
+      return search("محادثة جديدة"); // ★ بحث بالعربية
+    })
+    .then(function () {
+      check("★ البحث بالعربية يجد مفردات القاموس", "true", String(rows().length > 0));
+      check("سطر القاموس يحمل وسم «القاموس»", "true", String(LIST.innerText.indexOf("القاموس") >= 0));
+      return search("Rename"); // ★ بحث بالإنجليزية
+    })
+    .then(function () {
+      check("★ البحث بالإنجليزية يجد مفردات القاموس", "true", String(rows().length > 1));
+      var row = rowFor("Rename");
+      row.querySelector("input").value = "إعادة تسمية (اختبار)";
+      row.querySelector(".acts button").click();          // حفظ
+      return new Promise(function (r) { setTimeout(r, 400); });
+    })
+    .then(function () {
+      check("★ تعديل مفردة من القاموس يُحفظ تصحيحًا", "true", String(mine().indexOf("Rename") >= 0));
+      return search("Rename");
+    })
+    .then(function () {
+      var row = rowFor("Rename");
+      var btns = [].slice.call(row.querySelectorAll(".acts button")).map(function (b) { return b.textContent; });
+      check("المفردة انتقلت إلى «تصحيحاتك»", "true", String(row.querySelector(".src").textContent.indexOf("تصحيحك") > 0));
+      check("★ يظهر زر «استعادة الأصل» لا «حذف»", "true", String(btns.indexOf("استعادة الأصل") >= 0));
+      // حارس: حفظ نصٍّ مطابق للقاموس لا يُخزَّن
+      return search("Rename task");
+    })
+    .then(function () {
+      var row = rowFor("Rename task");
+      row.querySelector("input").value = BASE["Rename task"];
+      row.querySelector(".acts button").click();
+      return new Promise(function (r) { setTimeout(r, 400); });
+    })
+    .then(function () {
+      check("★ ترجمة مطابقة للقاموس لا تُخزَّن تصحيحًا", "false", String(mine().indexOf("Rename task") >= 0));
+      return search("Rename");
+    })
+    .then(function () {
+      var row = rowFor("Rename");
+      [].slice.call(row.querySelectorAll(".acts button")).find(function (b) { return b.textContent === "استعادة الأصل"; }).click();
+      return new Promise(function (r) { setTimeout(r, 400); });
+    })
+    .then(function () {
+      check("★ «استعادة الأصل» تحذف التصحيح", "false", String(mine().indexOf("Rename") >= 0));
+      check("تصحيح المستخدم الأصلي سليم", "true", String(mine().indexOf("Zzq my own correction") >= 0));
+      return search("e"); // حرف واحد شائع — يجب ألا يفجّر العرض
+    })
+    .then(function () {
+      check("حرف واحد لا يرسم آلاف الأسطر", "true", String(rows().length <= 60));
+      document.title = "terms " + pass + "/" + total;
+      var h = document.createElement("p");
+      h.className = pass === total ? "ok" : "bad";
+      h.textContent = "TERMS: " + pass + "/" + total + (pass === total ? " — all pass" : " — FAIL");
+      document.body.appendChild(h);
+    });
+}, 500);
+</script>

@@ -1,0 +1,795 @@
+/* engine.js — claude-mutarjim live translator (isolated content-script world).
+ * Reads globalThis.CLAUDE_L10N (from dictionary.js), applies direction + font,
+ * translates UI text nodes + attributes, and re-runs on dynamic DOM changes.
+ *
+ * PRIVACY — stated precisely, because a claim that overreaches is worse than none:
+ * To translate a label the engine must MATCH it, so it does read text nodes as it walks
+ * the DOM. What it never does is KEEP any of that: nothing read from the page is stored,
+ * accumulated, or transmitted — not to storage, not to a server, not anywhere. Reads are
+ * transient and match-only; the sole persistent writes are the user's own settings and
+ * the corrections they type themselves.
+ * Conversation content is excluded outright (see inChatContent), so message prose is
+ * never even matched. Discovering untranslated strings is done exclusively by «site
+ * scan», which fetches claude.ai's own public asset files — never the rendered page.
+ * No page-script injection: works within the page CSP.  */
+(function () {
+  "use strict";
+  var L10N = (typeof globalThis !== "undefined" && globalThis.CLAUDE_L10N) || null;
+  if (!L10N || !L10N.dicts) return;
+
+  var state = {
+    enabled: true,
+    lang: L10N.default || (L10N.langs && L10N.langs[0] && L10N.langs[0].code),
+    overrides: {},
+    userPatterns: [], // أنماط وَلّدها الاستيراد من النصوص ذات المتغيّرات
+    rtl: true, // full page dir=rtl ON by default for RTL languages; user can turn it off if a screen misbehaves
+    chatrtl: true, // fix direction of conversation text (dir=auto) — ON by default for Arabic
+  };
+  var active = null;
+  var pluralRes = null;
+
+  function compile() {
+    var base = L10N.dicts[state.lang];
+    if (!base) { active = null; return; }
+    var ov = (state.overrides && state.overrides[state.lang]) || {};
+    active = {
+      dir: base.dir || "ltr",
+      font: base.font || "",
+      strings: Object.assign({}, base.strings, ov),
+      plurals: base.plurals || {},
+      // أنماط المستخدم أولًا: تصحيحه يسبق النمط المدمج عند التعارض
+      patterns: (state.userPatterns || []).concat(base.patterns || []),
+    };
+    buildPlurals();
+    buildPatterns();
+    lookupCache = new Map(); // النتائج المخزّنة تعتمد على القاموس والقواعد — أبطِلها مع كل إعادة تركيب
+  }
+
+  // قيم الموقع الأصلية تُحفظ مرة واحدة: كان الإطفاء يمحو lang وdir محوًا مطلقًا،
+  // فتفقد الصفحة سمة lang التي وضعها الموقع (يعتمد عليها قارئ الشاشة والتدقيق الإملائي)
+  // ولا تعود إليها إلا بإعادة تحميل.
+  var origLang = null, origDir = null, origSaved = false;
+  function saveOriginals(html) {
+    if (origSaved) return;
+    origSaved = true;
+    origLang = html.getAttribute("lang");
+    origDir = html.getAttribute("dir");
+  }
+  function restoreAttr(html, name, val) {
+    if (val === null) html.removeAttribute(name); else html.setAttribute(name, val);
+  }
+  function applyChrome() {
+    var html = document.documentElement;
+    if (!html) return;
+    saveOriginals(html);
+    if (state.enabled && active) {
+      html.setAttribute("data-cml", "on");
+      if (active.font) html.style.setProperty("--cml-font", active.font);
+      if (state.rtl) {
+        html.setAttribute("dir", active.dir);
+        html.setAttribute("lang", state.lang);
+      } else {
+        restoreAttr(html, "dir", origDir);
+        restoreAttr(html, "lang", origLang);
+      }
+    } else {
+      html.removeAttribute("data-cml");
+      restoreAttr(html, "dir", origDir);
+      restoreAttr(html, "lang", origLang);
+      html.style.removeProperty("--cml-font");
+    }
+  }
+
+  // ---------- plurals ----------
+  function pluralIndex(lang, n) {
+    if (lang === "ar") return n === 0 ? 0 : n === 1 ? 1 : n === 2 ? 2 : (n % 100 >= 3 && n % 100 <= 10) ? 3 : (n % 100 >= 11) ? 4 : 5;
+    if (lang === "he") return n === 1 ? 0 : n === 2 ? 1 : 2;
+    return n === 1 ? 0 : 1;
+  }
+  function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+  function buildPlurals() {
+    pluralRes = [];
+    if (!active) return;
+    for (var eng in active.plurals) {
+      var spec = active.plurals[eng];
+      var forms = spec.forms || [];
+      [eng, spec.plural].forEach(function (pat) {
+        if (!pat) return;
+        try { pluralRes.push({ re: new RegExp("^" + esc(pat).replace("%d", "(\\d+)") + "$"), forms: forms }); } catch (e) {}
+      });
+    }
+  }
+  function tryPlural(text) {
+    if (!pluralRes) return null;
+    for (var i = 0; i < pluralRes.length; i++) {
+      var m = text.match(pluralRes[i].re);
+      if (m) {
+        var n = +m[1];
+        var f = pluralRes[i].forms[pluralIndex(state.lang, n)];
+        if (f === undefined) f = pluralRes[i].forms[pluralRes[i].forms.length - 1] || "";
+        return f.replace("%d", n);
+      }
+    }
+    return null;
+  }
+
+  // ---------- dynamic patterns (dates, "%d days ago" composites, greeting-with-name…) ----------
+  // dictionary "patterns": [{re, ar}] — ar may use $1..$9 (captured group),
+  // %M<n> (group n is an English month name → Arabic), %W<n> (weekday), %P<n> (AM/PM),
+  // and %C<n> (place name → Arabic *if known*, otherwise kept verbatim — never fails
+  // the pattern, so an unknown city still gets the rest of the line translated).
+  var MONTHS = { Jan: "يناير", January: "يناير", Feb: "فبراير", February: "فبراير", Mar: "مارس", March: "مارس", Apr: "أبريل", April: "أبريل", May: "مايو", Jun: "يونيو", June: "يونيو", Jul: "يوليو", July: "يوليو", Aug: "أغسطس", August: "أغسطس", Sep: "سبتمبر", Sept: "سبتمبر", September: "سبتمبر", Oct: "أكتوبر", October: "أكتوبر", Nov: "نوفمبر", November: "نوفمبر", Dec: "ديسمبر", December: "ديسمبر" };
+  var WDAYS = { Mon: "الاثنين", Monday: "الاثنين", Tue: "الثلاثاء", Tuesday: "الثلاثاء", Wed: "الأربعاء", Wednesday: "الأربعاء", Thu: "الخميس", Thursday: "الخميس", Fri: "الجمعة", Friday: "الجمعة", Sat: "السبت", Saturday: "السبت", Sun: "الأحد", Sunday: "الأحد" };
+  var PERIODS = { AM: "صباحًا", PM: "مساءً" };
+  // أماكن شائعة (مدن ومناطق) — غير الموجود يبقى كما ورد
+  var PLACES = {
+    Riyadh: "الرياض", Jeddah: "جدة", Jiddah: "جدة", Mecca: "مكة المكرمة", Makkah: "مكة المكرمة",
+    Medina: "المدينة المنورة", Madinah: "المدينة المنورة", Dammam: "الدمام", Khobar: "الخبر",
+    Dhahran: "الظهران", Buraydah: "بريدة", Buraidah: "بريدة", Unaizah: "عنيزة", Tabuk: "تبوك",
+    Abha: "أبها", "Khamis Mushait": "خميس مشيط", Taif: "الطائف", "Ta'if": "الطائف",
+    Hail: "حائل", "Ha'il": "حائل", Najran: "نجران", Jazan: "جازان", Yanbu: "ينبع",
+    Jubail: "الجبيل", Qatif: "القطيف", Hofuf: "الهفوف", Sakaka: "سكاكا", Arar: "عرعر",
+    "Al-Qassim": "القصيم", Qassim: "القصيم", "'Asir": "عسير", Asir: "عسير",
+    "Al-Bahah": "الباحة", Bahah: "الباحة", "Al-Jawf": "الجوف", Jawf: "الجوف",
+    "Eastern Province": "المنطقة الشرقية", "Northern Borders": "الحدود الشمالية",
+  };
+  var patRes = null;
+  function buildPatterns() {
+    patRes = [];
+    if (!active || !active.patterns) return;
+    for (var i = 0; i < active.patterns.length; i++) {
+      var p = active.patterns[i];
+      if (!p || !p.re || !p.ar) continue;
+      try { patRes.push({ re: new RegExp(p.re), ar: p.ar }); } catch (e) {}
+    }
+  }
+  function tryPatterns(text) {
+    if (!patRes || !patRes.length || !/[A-Za-z]/.test(text)) return null;
+    for (var i = 0; i < patRes.length; i++) {
+      var m = text.match(patRes[i].re);
+      if (!m) continue;
+      var bad = false;
+      var out = patRes[i].ar
+        .replace(/%M(\d)/g, function (t, g) { var v = MONTHS[m[+g]]; if (v === undefined) { bad = true; return t; } return v; })
+        .replace(/%W(\d)/g, function (t, g) { var v = WDAYS[m[+g]]; if (v === undefined) { bad = true; return t; } return v; })
+        .replace(/%P(\d)/g, function (t, g) { var v = PERIODS[m[+g]]; if (v === undefined) { bad = true; return t; } return v; })
+        .replace(/%C(\d)/g, function (t, g) { var raw = m[+g]; if (raw === undefined) return ""; var v = PLACES[raw]; return v === undefined ? raw : v; })
+        .replace(/\$(\d)/g, function (t, g) { return m[+g] !== undefined ? m[+g] : ""; });
+      if (!bad) return out; // an unmapped %M/%W/%P means the pattern didn't really fit — try the next one
+    }
+    return null;
+  }
+
+  // ---------- text + attributes ----------
+  var SKIP = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1, CODE: 1, PRE: 1, KBD: 1, SAMP: 1 };
+  // ★ الحاجز بالأب المباشر وحده لا يكفي: كتلة شيفرة بنية <pre><code><span>…</span></code></pre>
+  // — وهي بنية إبراز الصياغة المعتادة — أبو عقدتها النصية <span> لا <code>، فيمرّ نصّ
+  // الشيفرة فيُترجَم. `closest` يصعد إلى الجذر بلا سقف فيسدّها. (مسار walk كان محميًّا
+  // بالتقليم من مستوى العنصر، أما مسار الطفرات فينفذ إلى translateText مباشرة.)
+  var SKIP_ANCESTOR = "script, style, noscript, textarea, code, pre, kbd, samp";
+  function inSkipped(el) {
+    if (el && el.nodeType !== 1) el = el.parentNode;
+    if (!el || el.nodeType !== 1 || !el.closest) return false;
+    try { return !!el.closest(SKIP_ANCESTOR); } catch (e) { return false; }
+  }
+  var ATTRS = ["placeholder", "aria-label", "title", "alt"];
+
+  // سجلّ ما تُرجم: عقدة → {raw الأصل الإنجليزي, key, lastWritten آخر ما كتبناه}.
+  // بدونه يضيع الأصل بعد الترجمة، فلا يمكن تطبيق تصحيحات «كلماتك المحفوظة» على عقدة
+  // مترجمة إلا بإعادة تحميل الصفحة — وهو ما كان يجعل الميزة تبدو معطلة.
+  var appliedText = new WeakMap();
+  var appliedAttr = new WeakMap();
+
+  // ★ ذاكرة نتائج البحث (تشمل الإخفاق). بعد توسّع القواعد إلى ما يقارب الألف صار كل نصٍّ
+  // غير مترجَم يكلّف مسحًا كاملًا للأنماط (~0.35 مللي ثانية للنص الواحد قياسًا)، وواجهة
+  // claude.ai تعيد عرض العقد نفسها مئات المرات أثناء البث والتمرير — فبلا تخزين تتكرر
+  // الكلفة نفسها بلا فائدة. المفتاح ← الناتج (أو null). تُمسح في compile() لأن تعديل
+  // «كلماتك المحفوظة» أو القواعد المستوردة يغيّر النتائج.
+  var lookupCache = null;
+  var LOOKUP_CACHE_MAX = 5000;
+
+  // سلسلة البحث الموحّدة: القاموس ← الجموع ← الأنماط. null = لا ترجمة.
+  function lookup(key) {
+    if (lookupCache) {
+      var hit = lookupCache.get(key);
+      if (hit !== undefined) return hit;
+    }
+    var v = active.strings[key];
+    if (v === undefined) { var pl = tryPlural(key); if (pl !== null) v = pl; }
+    if (v === undefined) { var pt = tryPatterns(key); if (pt !== null) v = pt; }
+    var out = v === undefined ? null : v;
+    if (lookupCache) {
+      if (lookupCache.size >= LOOKUP_CACHE_MAX) lookupCache.clear(); // سقف يحمي الذاكرة
+      lookupCache.set(key, out);
+    }
+    return out;
+  }
+
+  // Never touch the CONTENT of a conversation (user/Claude message prose):
+  // the engine only relabels UI chrome, never reads/rewrites message text.
+  // كان الصعود يدويًّا بسقف عشرة مستويات، فرسالةٌ عميقة التداخل (قائمة داخل اقتباس داخل
+  // جدول) تتجاوز السقف فيُعامَل نصّها معاملة الواجهة ويُعاد كتابته — وهو ما يحرّم على
+  // الإضافة أن تفعله. closest يصعد إلى الجذر بلا سقف وهو مبنيّ في المتصفح فأسرع.
+  var CHAT_ANCESTOR = ".prose, .font-claude-message, [data-testid*='user-message'], [data-testid*='message-content']";
+  function inChatContent(el) {
+    if (el && el.nodeType !== 1) el = el.parentNode;
+    if (!el || el.nodeType !== 1 || !el.closest) return false;
+    try { return !!el.closest(CHAT_ANCESTOR); } catch (e) { return false; }
+  }
+  function translable(node) {
+    var p = node.parentNode;
+    if (!p) return false;
+    if (inSkipped(p)) return false;   // بالسلف لا بالأب المباشر (شيفرة ملفوفة في <span>)
+    if (p.isContentEditable) return false;
+    if (inChatContent(p)) return false;
+    return true;
+  }
+  function translateText(node) {
+    if (!active || !translable(node)) return;
+    var prev = appliedText.get(node);
+    if (prev) {
+      if (node.nodeValue === prev.lastWritten) {
+        // العقدة كما تركناها: أعد اشتقاق الترجمة من الأصل (يلتقط تصحيحًا جديدًا أو حذفه)
+        var nv = lookup(prev.key);
+        var want = nv === null ? prev.raw : prev.raw.replace(prev.key, function () { return nv; });
+        if (node.nodeValue !== want) { node.nodeValue = want; prev.lastWritten = want; }
+        if (nv === null) appliedText.delete(node); // عاد للأصل — عقدة عادية من جديد
+        return;
+      }
+      // الموقع نفسه غيّر النص (عدّاد مثلًا) — انسَ القديم وترجم الجديد ترجمة عادية
+      appliedText.delete(node);
+    }
+    var raw = node.nodeValue;
+    if (!raw) return;
+    var key = raw.trim();
+    if (!key || key.length > 300) return; // allow long UI descriptions (chat text already excluded by inChatContent)
+    var v = lookup(key);
+    if (v !== null && v !== key) {
+      var out = raw.replace(key, function () { return v; });
+      appliedText.set(node, { raw: raw, key: key, lastWritten: out });
+      node.nodeValue = out;
+      return;
+    }
+    // لا يُسجَّل شيء هنا: النصّ قُرئ للمطابقة فحسب، ولم يُطابق، فيُترك ويُنسى. لا يُخزَّن
+    // ولا يُراكَم ولا يُرسَل. (وهذا موضع الفرق: القراءة عابرة، والتخزين معدوم.)
+    // اكتشاف النصوص غير المترجمة يجري عبر «فحص الموقع» الذي يقرأ ملفات claude.ai العامة.
+  }
+  function translateAttrs(el) {
+    if (!active || el.nodeType !== 1 || !el.getAttribute) return;
+    if (inChatContent(el)) return;
+    var rec = appliedAttr.get(el);
+    for (var i = 0; i < ATTRS.length; i++) {
+      var a = ATTRS[i], val = el.getAttribute(a);
+      if (!val) continue;
+      var prev = rec && rec[a];
+      if (prev) {
+        if (val === prev.lastWritten) {
+          var nv = lookup(prev.key);
+          var want = nv === null ? prev.raw : prev.raw.replace(prev.key, function () { return nv; });
+          if (val !== want) { el.setAttribute(a, want); prev.lastWritten = want; }
+          if (nv === null) delete rec[a];
+          continue;
+        }
+        delete rec[a]; // الموقع بدّل السمة — ترجمة عادية من جديد
+      }
+      var key = val.trim();
+      if (!key || key.length > 300) continue; // السقف نفسه المطبَّق على عقد النص
+      var t = lookup(key);
+      if (t !== null && t !== key) {
+        var out = val.replace(key, function () { return t; });
+        if (!rec) { rec = {}; appliedAttr.set(el, rec); }
+        rec[a] = { raw: val, key: key, lastWritten: out };
+        el.setAttribute(a, out);
+      }
+    }
+  }
+  // إيقاف الترجمة يجب أن يُرجع النص الإنجليزي فورًا، لا أن يترك ما تُرجم مترجمًا.
+  // سجلّ الأصول يجعل ذلك ممكنًا بلا تحديث الصفحة.
+  function restoreAll(root) {
+    var scope = root || document.body || document.documentElement;
+    if (!scope) return;
+    var tw = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
+    var n, list = [];
+    while ((n = tw.nextNode())) list.push(n);
+    for (var i = 0; i < list.length; i++) {
+      var rec = appliedText.get(list[i]);
+      if (rec && list[i].nodeValue === rec.lastWritten) { list[i].nodeValue = rec.raw; appliedText.delete(list[i]); }
+    }
+    if (scope.querySelectorAll) {
+      var els = scope.querySelectorAll("[placeholder],[aria-label],[title],[alt]");
+      for (var j = 0; j < els.length; j++) {
+        var ar = appliedAttr.get(els[j]);
+        if (!ar) continue;
+        for (var a in ar) {
+          if (els[j].getAttribute(a) === ar[a].lastWritten) els[j].setAttribute(a, ar[a].raw);
+        }
+        appliedAttr.delete(els[j]);
+      }
+    }
+  }
+
+  function walk(root) {
+    if (!active || !state.enabled || !root) return;
+    // تقليم من مستوى العنصر: صعودٌ واحد بدل صعودٍ لكل عقدة نصية داخل الفرع.
+    if (root.nodeType === 1 && inChatContent(root)) return;
+    if (root.nodeType === 1) {
+      translateAttrs(root);
+      var els = root.querySelectorAll("[placeholder],[aria-label],[title],[alt]");
+      for (var i = 0; i < els.length; i++) translateAttrs(els[i]);
+    }
+    // نمشي على العناصر والنصوص معًا: عنصرُ محادثةٍ يُرفض فيُقلَّم فرعه كله بفحص واحد،
+    // بدل استدعاء inChatContent لكل عقدة نصية داخل ردٍّ طويل (مئات العقد).
+    var tw = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+      acceptNode: function (n) {
+        if (n.nodeType === 1) {
+          if (SKIP[n.nodeName] || n.isContentEditable) return NodeFilter.FILTER_REJECT;
+          try { if (n.matches && n.matches(CHAT_ANCESTOR)) return NodeFilter.FILTER_REJECT; } catch (e) {}
+          return NodeFilter.FILTER_SKIP; // تجاوز العنصر نفسه واستمر في أبنائه
+        }
+        var p = n.parentNode;
+        if (!p || SKIP[p.nodeName] || p.isContentEditable) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    var batch = [], n;
+    while ((n = tw.nextNode())) batch.push(n);
+    for (var j = 0; j < batch.length; j++) translateText(batch[j]);
+  }
+
+  // ---------- observe dynamic UI ----------
+  // لا نحتفظ بسجلات الطفرات كما هي: السجل يمسك addedNodes وremovedNodes (قوائم عقد حيّة)
+  // فتبقى شجرةٌ أُزيلت محتجزةً في الذاكرة، وتبويبٌ خلفي يبثّ دقائق يراكم عشرات الآلاف من
+  // السجلات لأن requestIdleCallback لا يكاد يعمل وهو مخفيّ. نستخرج الأهداف فورًا في
+  // مجموعات (إزالة تكرار مجانية) بسقفٍ يمنع التضخم غير المحدود.
+  var queued = false;
+  var pendAdded = [], pendText = new Set(), pendAttr = new Set();
+  var pendOverflow = false;
+  var PEND_MAX = 2000;
+  var ric = window.requestIdleCallback ? window.requestIdleCallback.bind(window) : null;
+  var schedule = ric ? function (cb) { return ric(cb, { timeout: 500 }); } : function (cb) { return setTimeout(cb, 200); };
+  function clearPending() { pendAdded = []; pendText.clear(); pendAttr.clear(); }
+  var obs = new MutationObserver(function (list) {
+    if (!state.enabled || !active) return;
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i];
+      if (pendAdded.length + pendText.size + pendAttr.size > PEND_MAX) {
+        // تجاوزنا السقف: انسَ التفاصيل واكتفِ بمرور كامل لاحق — أرخص وأضمن من طابور متضخم
+        pendOverflow = true; clearPending(); break;
+      }
+      if (m.type === "childList") {
+        for (var k = 0; k < m.addedNodes.length; k++) {
+          var nd = m.addedNodes[k];
+          if (nd.nodeType === 1 || nd.nodeType === 3) pendAdded.push(nd);
+        }
+      } else if (m.type === "characterData") pendText.add(m.target);
+      else if (m.type === "attributes") pendAttr.add(m.target);
+    }
+    if (queued) return; queued = true;
+    schedule(function () {
+      queued = false;
+      // الحالة قد تكون تبدّلت بين جدولة الدفعة وتنفيذها (حتى نصف ثانية). بلا هذا الفحص
+      // تُنفَّذ دفعة قديمة بعد أن أوقف المستخدم الترجمة فتعيد ترجمة عقد أرجعها restoreAll
+      // إلى الإنجليزية — فتبقى عبارات عربية عالقة في صفحة «موقفة» حتى إعادة التحميل.
+      if (!state.enabled || !active) { clearPending(); pendOverflow = false; return; }
+      if (pendOverflow) { pendOverflow = false; clearPending(); fullPass(); return; }
+      var added = pendAdded, texts = pendText, attrs = pendAttr;
+      pendAdded = []; pendText = new Set(); pendAttr = new Set();
+      for (var i = 0; i < added.length; i++) {
+        var nd = added[i];
+        if (!nd.isConnected) continue; // عقدة أُزيلت قبل أن نصل إليها
+        if (nd.nodeType === 1) { walk(nd); applyChatDir(nd); }
+        else translateText(nd);
+      }
+      texts.forEach(function (n) { if (n.isConnected) translateText(n); });
+      attrs.forEach(function (n) { if (n.isConnected) translateAttrs(n); });
+    });
+  });
+
+  // ---------- conversation direction (optional; دير=auto lets the browser flow Arabic RTL and keep code/English LTR) ----------
+  var CHATSEL = ".prose, .font-claude-message, [data-testid='user-message'], [data-testid='message-content']";
+  function applyChatDir(root) {
+    if (!root) return;
+    var scope = root.nodeType === 1 ? root : (document.body || document.documentElement);
+    if (!scope || !scope.querySelectorAll) return;
+    var list = [];
+    if (scope.matches && scope.matches(CHATSEL)) list.push(scope);
+    var found = scope.querySelectorAll(CHATSEL);
+    for (var i = 0; i < found.length; i++) list.push(found[i]);
+    var on = state.enabled && state.chatrtl;
+    for (var j = 0; j < list.length; j++) {
+      var el = list[j];
+      if (on) {
+        el.setAttribute("dir", "auto");
+        el.setAttribute("data-cml-dir", "1");
+        // ★ dir=auto على الحاوية وحدها يحسم الاتجاه بأول حرف قويّ في الرسالة كلها،
+        // فردٌّ يبدأ بالإنجليزية ثم يسترسل بالعربية يُعرض كله LTR وفقراته العربية
+        // بمحاذاة يسارية. الحسم لكل فقرة على حدة هو ما يجعل النص المختلط سليمًا.
+        var kids = el.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dd, dt, figcaption");
+        for (var q = 0; q < kids.length; q++) {
+          if (kids[q].closest("pre, code")) continue; // الشيفرة تبقى LTR
+          kids[q].setAttribute("dir", "auto");
+          kids[q].setAttribute("data-cml-dir", "1");
+        }
+      } else if (el.getAttribute("data-cml-dir")) {
+        el.removeAttribute("dir"); el.removeAttribute("data-cml-dir");
+      }
+    }
+    // تنظيف الأبناء عند الإطفاء (السلكتور أعلاه لا يلتقطهم لأنهم ليسوا حاويات رسائل)
+    if (!on && scope.querySelectorAll) {
+      var marked = scope.querySelectorAll("[data-cml-dir]");
+      for (var z = 0; z < marked.length; z++) { marked[z].removeAttribute("dir"); marked[z].removeAttribute("data-cml-dir"); }
+    }
+  }
+
+  // ---------- فحص تحديثات الموقع (يُطلب من صفحة الإعدادات عبر مفتاح تخزين) ----------
+  // claude.ai مقسّم إلى مئات الملفات تُحمَّل بتسلسل عميق، فالزحف التكراري هو السبيل
+  // الوحيد لرؤية كل النصوص. يعمل هنا لأننا داخل الصفحة (نفس الأصل) — بلا صلاحيات إضافية.
+  // ★★ فكُّ حرفيّة جافاسكربت فكًّا حقيقيًّا (المشترك بين الفحص وسكربت الحصاد).
+  // أدوات الحزم ترمّز كل محرف غير ASCII: ’ ← ’ و— ← — و… ← … (وterser
+  // يستعمل \xNN). فبلا فكٍّ حقيقي يكون الفحص أعمى عن فئة محارف كاملة — وهي في نصوص
+  // الواجهة الإنجليزية كثيرةٌ جدًّا (الفاصلة العليا المطبعية وحدها في نحو 12% منها).
+  var CTRL_RE = new RegExp("[\\u0000-\\u001f\\u007f]");
+  function unescapeLiteral(lit, singleQuoted) {
+    if (lit == null) return null;
+    // (١) \' هروبٌ صحيح في الحرفيّة المفردة ولا يعرفه JSON
+    var t = singleQuoted ? lit.replace(/\\'/g, "'") : lit;
+    // (٢) \xNN هروب جافاسكربت لا يعرفه JSON — حوّله إلى \u00NN (وإلا سقطت é و× و·)
+    t = t.replace(/\\x([0-9a-fA-F]{2})/g, "\\u00$1");
+    // (٣) اهرب علامات الاقتباس المزدوجة العارية. التمريرة **ذرّية**: تبتلع كل هروبٍ
+    // بأكمله أولًا، فلا تُخدع بـ\" ولا بعلامتين متلاصقتين.
+    t = t.replace(/\\[\s\S]|"/g, function (x) { return x === '"' ? '\\"' : x; });
+    try { return JSON.parse('"' + t + '"'); } catch (e) { return null; }
+  }
+
+  var scanning = false;
+  var cancelScan = false;
+  var SCAN_ID = String(Math.random()).slice(2) + "-" + Date.now(); // هوية هذا الإطار
+  function setScan(o) { try { chrome.storage.local.set({ cml_scan_result: o }); } catch (e) {} }
+
+  // طلب الفحص يُذاع إلى **كل** تبويبات وإطارات claude.ai. بلا تنسيق يزحف كلٌّ منها
+  // زحفًا كاملًا (مئات الطلبات × عدد التبويبات) وتتضارب عدّاداتها في صفحة الإعدادات.
+  // الحل: حجز بمفتاح مشترك — أول من يكتب هويته يفوز، والبقية تنسحب بصمت.
+  function claimScan(cb) {
+    if (window.top !== window) return cb(false); // الإطارات الداخلية لا تزحف أصلًا
+    try {
+      chrome.storage.local.get(["cml_scan_claim"], function (s) {
+        var c = s.cml_scan_claim;
+        // حجز قديم (>90 ثانية) يُعدّ متروكًا — تبويب أُغلق في منتصف فحصه
+        if (c && c.id && c.at && Date.now() - c.at < 90000) return cb(false);
+        chrome.storage.local.set({ cml_scan_claim: { id: SCAN_ID, at: Date.now() } }, function () {
+          // تأخير عشوائي قصير قبل التحقق: «اكتب ثم اقرأ» ليست عملية ذرّية، وتبويبان
+          // أيقظهما البثّ نفسه قد تتداخل كتاباتهما فيرى كلٌّ هويته ويفوزان معًا. المهلة
+          // تجعل آخر كاتب هو الفائز الوحيد، ويكمّلها فحص الملكية الدوري في step().
+          setTimeout(function () {
+            chrome.storage.local.get(["cml_scan_claim"], function (s2) {
+              cb(!!(s2.cml_scan_claim && s2.cml_scan_claim.id === SCAN_ID));
+            });
+          }, 120 + Math.floor(Math.random() * 180));
+        });
+      });
+    } catch (e) { cb(false); } // تعطّل التخزين ⇒ لا حجز ⇒ لا زحف يتيم بلا تنسيق
+  }
+  function releaseScan() { try { chrome.storage.local.set({ cml_scan_claim: null }); } catch (e) {} }
+  // تجديد طابع الحجز أثناء الزحف: عتبة «المتروك» تسعون ثانية، والزحف الكامل يتجاوزها
+  // بكثير — فبلا تجديد يصير الزاحفُ الحيّ متروكًا في نظر بقية التبويبات وصفحة الإعدادات.
+  function touchClaim() { try { chrome.storage.local.set({ cml_scan_claim: { id: SCAN_ID, at: Date.now() } }); } catch (e) {} }
+  // الحجز قد يُمسح من صفحة الإعدادات (بدء فحص جديد) أو يفوز به غيرنا رغم التحقق أعلاه.
+  // فحصٌ دوري رخيص يجعل الزاحف الخاسر ينسحب بدل أن يزحف زحفًا موازيًا كاملًا.
+  function stillOurs(cb) {
+    try {
+      chrome.storage.local.get(["cml_scan_claim"], function (s) {
+        cb(!!(s.cml_scan_claim && s.cml_scan_claim.id === SCAN_ID));
+      });
+    } catch (e) { cb(true); }
+  }
+
+  // ★ الردّ الفوري (إشعار استلام). كان المحرّك يصمت في كل مسارات الرفض — إن كان مشغولًا،
+  // أو خسر الحجز، أو تعطّل التخزين — فتنتظر صفحة الإعدادات عشرين ثانية ثم تقول «لم يستجب
+  // أي تبويب». وهي رسالة كاذبة: التبويب استجاب لكنه امتنع بصمت، فيضيع الفرق بين
+  // «لا سكربت حيّ» و«سكربت حيّ امتنع» — وهو الفرق الذي يحدّد ما يفعله المستخدم.
+  // فالآن: كل إطار عُلويٍّ يستلم الطلب يكتب إشعار استلام فورًا قبل أي شيء.
+  function ackScan() {
+    setScan({ status: "running", fetched: 0, found: 0, queued: 0, missing: 0, at: Date.now() });
+  }
+  function runScan() {
+    if (window.top !== window) return;          // الإطارات الداخلية لا تفحص ولا تُشعِر
+    if (!active) return;                        // لا قاموس ⇒ لا معنى للفحص
+    if (scanning) { ackScan(); return; }        // نفحص فعلًا: طمئنها بدل الصمت
+    ackScan();
+    claimScan(function (won) {
+      if (won) return doScan();
+      // خسرنا الحجز: إمّا فحصٌ حيّ في تبويب آخر (وسيكتب نتيجته ويدهس إشعارنا)، وإمّا
+      // حجزٌ عالق. ننتظر قليلًا، فإن لم يظهر تقدّمٌ من غيرنا صرّحنا بالسبب بدل تركه غامضًا.
+      setTimeout(function () {
+        try {
+          chrome.storage.local.get(["cml_scan_result"], function (s) {
+            var r = s.cml_scan_result;
+            if (r && r.status === "running" && r.fetched > 0) return; // غيرُنا يعمل فعلًا
+            if (r && r.status !== "running") return;                  // غيرُنا أنهى أو أخطأ
+            setScan({ status: "error", error:
+              "يبدو أن فحصًا آخر ما زال محجوزًا. إن لم يكن ثمة تبويب claude.ai آخر يفحص الآن، فاضغط «إيقاف» ثم «ابدأ الفحص» من جديد." });
+          });
+        } catch (e) {}
+      }, 3000);
+    });
+  }
+  function doScan() {
+    if (scanning) return;
+    scanning = true;
+    // طلب الإلغاء يُذاع لكل التبويبات، لكن التصفير لا يقع إلا داخل abort/finish — أي في
+    // التبويب الفاحص وحده. فتبويب لم يكن يفحص يحتفظ بالعلم مرفوعًا ويُجهض أول فحص يفوز به.
+    cancelScan = false;
+    var t0 = Date.now();
+    // ★ النبض `at` لازم في **كل** تحديث «جارٍ» بلا استثناء. كان أول تحديث بلا نبض،
+    // فإن مات الفحص بعده مباشرة (أُغلق التبويب، أُعيد تحميل الإضافة) بقيت في التخزين
+    // نتيجةُ «running» بلا نبض إلى الأبد — وصفحة الإعدادات تعطّل زر البدء في هذه الحالة
+    // ولا تعرض مخرجًا إلا بنبضٍ متقادم، فيصير الفحص مقفلًا لا يبدأ أبدًا.
+    setScan({ status: "running", fetched: 0, found: 0, missing: 0, at: Date.now() });
+    (function () {
+      var scripts = [];
+      var els = document.querySelectorAll("script[src]");
+      for (var i = 0; i < els.length; i++) scripts.push(els[i].src);
+      // بعض البنى تعلن ملفاتها بروابط تحميل مسبق لا بوسم script، فلا تُرى بدون هذا
+      var links = document.querySelectorAll("link[rel='modulepreload'][href], link[rel='preload'][as='script'][href]");
+      for (var i2 = 0; i2 < links.length; i2++) scripts.push(links[i2].href);
+
+      // ★ اختيار ملف الدخول على مراحل. الاشتراط الصارم (مسار ‎/assets/v1/‎ حرفيًّا **و**
+      // أصل الصفحة نفسه) كان يُفشل الفحص كليًّا متى غيّر الموقع مسار أصوله أو قدّمها من
+      // نطاق فرعي — ورسالة «افتح صفحة claude.ai» تُوهم أن العلة عند المستخدم لا عندنا.
+      // نتدرّج: أصلُنا ومسارٌ معروف ← عائلة claude.ai ← أي ملف حزمة مُبصَّم من أصلنا.
+      // ويبقى الوعد محفوظًا: لا نقبل أصلًا خارج نطاق الموقع مهما كان مسار السكربت.
+      function urlOf(u) { try { return new URL(u, location.href); } catch (e) { return null; } }
+      function ours(h) { return h === location.hostname || /(^|\.)claude\.ai$/.test(h) || /(^|\.)anthropic\.com$/.test(h); }
+      var HASHED = /\/[A-Za-z0-9_.]+-[A-Za-z0-9_-]{6,}\.[cm]?js(\?|$)/;
+      function pickBy(test) {
+        for (var pass = 0; pass < 2; pass++) {          // 0: أصل الصفحة  1: عائلة claude.ai
+          for (var j = 0; j < scripts.length; j++) {
+            var u = urlOf(scripts[j]);
+            if (!u) continue;
+            if (pass === 0 ? u.origin !== location.origin : !ours(u.hostname)) continue;
+            if (test(u)) return u;
+          }
+        }
+        return null;
+      }
+      var pick = pickBy(function (u) { return /\/assets\/v\d+\//.test(u.pathname); })
+              || pickBy(function (u) { return HASHED.test(u.pathname); });
+      if (!pick) {
+        var origins = {};
+        for (var q = 0; q < scripts.length; q++) { var uq = urlOf(scripts[q]); if (uq) origins[uq.origin] = 1; }
+        scanning = false; releaseScan();
+        setScan({ status: "error", error:
+          "لم أعثر على ملفات الموقع في هذه الصفحة. تأكد أنك في تبويب claude.ai وأن الصفحة اكتمل تحميلها، ثم حدّثها (Ctrl+F5) وأعد الفحص." +
+          " [تشخيص: عدد الملفات " + scripts.length + " · الأصول: " + (Object.keys(origins).join("، ") || "لا شيء") + " · الصفحة: " + location.origin + "]" });
+        return;
+      }
+      var base = pick.href.slice(0, pick.href.lastIndexOf("/") + 1);
+      var REF = /[A-Za-z0-9_]+-[A-Za-z0-9_-]{6,}\.js/g;
+      var DM = /(?:"?defaultMessage"?):\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/g;
+      var seen = {}, queue = [], msgs = {}, fetched = 0, found = 0, failed = 0;
+      // ابذر الطابور بكل ملف يقع تحت القاعدة المكتشفة (لا تحت مسارٍ ثابتٍ مفترض)
+      for (var k = 0; k < scripts.length; k++) {
+        var uk = urlOf(scripts[k]);
+        if (!uk || uk.href.indexOf(base) !== 0) continue;
+        var f = uk.href.slice(base.length);
+        if (f && !seen[f]) { seen[f] = 1; queue.push(f); }
+      }
+      // معالجة ملف واحد ثم إفساح المجال للصفحة. الملفات قد تبلغ ميغابايتات، ومعالجة
+      // ثلاثين منها في مهمة واحدة تجمّد الواجهة مئات المللي ثانية في كل دفعة —
+      // والمستخدم قد يكون يقرأ ردّ كلود في التبويب نفسه. التوازي 6 لا 30 لئلا يزاحم
+      // الفحصُ تدفّقَ المحادثة على الاتصال نفسه.
+      var PARALLEL = 6;
+      function scanOne(tx) {
+        fetched++;
+        var refs = tx.match(REF) || [];
+        for (var b = 0; b < refs.length; b++) if (!seen[refs[b]]) { seen[refs[b]] = 1; queue.push(refs[b]); }
+        var m;
+        DM.lastIndex = 0;
+        while ((m = DM.exec(tx))) {
+          // ★★ فكُّ ترميزٍ حقيقي. كان الفكّ لا يعالج إلا \" و\' ثم **يرمي** كل نصّ بقي
+          // فيه \u أو \x. وأدوات الحزم ترمّز كل محرف غير ASCII هكذا — فكان الفحص أعمى
+          // عن **فئة محارف كاملة**: كل نصّ فيه فاصلة عليا مطبعية (’) أو شرطة طويلة (—)
+          // أو نقاط حذف (…) يُرمى برمّته. وقياسًا على كتالوج الموقع: 16% من نصوص الواجهة.
+          // وهذا هو السبب الجذري لِما يراه المستخدم على الشاشة غير مترجَم ولا يظهر في
+          // نتيجة الفحص أبدًا. (العلة نفسها كانت في harvest-all-strings.js فحُرم القاموس
+          // منها منذ البداية — وما تُرجم منها إنما جاء من حزمة سطح المكتب.)
+          var s = unescapeLiteral(m[1] != null ? m[1] : m[2], m[1] == null);
+          if (s === null) continue;                       // تعذّر الفكّ ⇒ تجاهُل، لا نصّ مشوّه
+          s = s.replace(/\s+/g, " ").trim();
+          if (!s || s.length < 2 || s.length > 300) continue;
+          if (!/[A-Za-z]/.test(s)) continue;
+          if (CTRL_RE.test(s)) continue;                  // محارف تحكّم: صار الفكّ يقبلها
+          if (/^[#\/]|^\d|https?:|www\.|[@\\^~`|=]/.test(s) || /^[a-z]+([A-Z][a-z]+)+$/.test(s) || (/_/.test(s) && !/ /.test(s))) continue;
+          // كتل ICU (جمع/اختيار) خارج نطاق التوليد التلقائي — تحتاج فئات العربية الست
+          if (/\{[^{}]*,\s*(plural|select|selectordinal)\s*,/.test(s)) continue;
+          if (/<\/?[A-Za-z][^>]*>/.test(s)) continue; // وسوم HTML داخل النص
+          // نقبل الآن النصوص ذات المتغيّرات {name} — تُحوَّل إلى أنماط عند الاستيراد
+          if (/\{/.test(s) && !/^[^{}]*(\{[A-Za-z_$][\w$]*\}[^{}]*)+$/.test(s)) continue;
+          if (!msgs[s]) { msgs[s] = 1; found++; }
+        }
+      }
+      // ★ التنازل بين الملفات. المشكلة: الفحص يجري في تبويب claude.ai بينما المستخدم في
+      // تبويب الإعدادات — أي في تبويب **مخفيّ**. و`requestIdleCallback` لا تُنفَّذ أصلًا
+      // ما دامت الصفحة مخفية (لا وقت خمول يُحتسب لها)، و`setTimeout` يُخنق إلى مرّة كل
+      // ثانية. فالزحف كان يزحف زحفًا أو يقف. ورسائل المُرحِّل (MessageChannel) مهامٌّ
+      // لا تخضع لخنق المؤقّتات، فهي السبيل الصحيح للتنازل في تبويب مخفيّ.
+      // ولا نستعمل المهام الصغرى (Promise) هنا: سلسلةٌ منها لا تُفرَّغ فتَحرِم الشبكةَ
+      // من فرصة تسليم ردودها فيتجمّد الزحف.
+      var mcQueue = [], mc = null;
+      try {
+        mc = new MessageChannel();
+        mc.port1.onmessage = function () { var f = mcQueue.shift(); if (f) f(); };
+      } catch (e) { mc = null; }
+      var yieldTo = function (fn) {
+        if (document.hidden && mc) { mcQueue.push(fn); mc.port2.postMessage(0); return; }
+        if (window.requestIdleCallback) { window.requestIdleCallback(fn, { timeout: 200 }); return; }
+        setTimeout(fn, 0);
+      };
+      var ownCheck = 0;
+      function step() {
+        if (cancelScan) return abort();
+        if (!queue.length) return finish();
+        // تحقّق من ملكية الحجز كل عشر دفعات: إن مسحه بدءُ فحصٍ جديد أو فاز به تبويب آخر
+        // فانسحب بدل مواصلة زحفٍ موازٍ تتداخل كتاباته مع الزاحف الفائز.
+        if (++ownCheck % 10 === 0) {
+          return stillOurs(function (ours) {
+            if (!ours) { scanning = false; cancelScan = false; return; }
+            stepNow();
+          });
+        }
+        stepNow();
+      }
+      function stepNow() {
+        var batch = queue.splice(0, PARALLEL);
+        Promise.all(batch.map(function (n) {
+          // ★ `fetch` لا ترفض عند 404 ولا 500 — فكان جسمُ صفحة الخطأ يُمرَّر إلى scanOne
+          // فيُحسب «ملفًا مفحوصًا» بلا نصوص. وانقطاعٌ شبكي كامل كان يُبلَّغ عنه
+          // «تمّ الفحص، صفر ناقص» — وهي أسوأ نتيجة ممكنة: خطأٌ يُقدَّم نجاحًا.
+          // الآن يُعدّ الإخفاق ويُصرَّح به، ولا يُحسب الملف مفحوصًا.
+          return fetch(base + n)
+            .then(function (r) { return r.ok ? r.text() : null; })
+            .catch(function () { return null; });
+        })).then(function (texts) {
+          var a = 0;
+          (function chew() {
+            if (cancelScan) return abort();
+            if (a >= texts.length) {
+              // التقدّم = المعالَج ÷ (المعالَج + المتبقي)؛ الطابور ينمو أثناء الزحف فهو تقديري
+              // at = نبض: صفحة الإعدادات تستدلّ به على تعثّر الفحص (تبويب أُغلق مثلًا)
+              setScan({ status: "running", fetched: fetched, found: found, queued: queue.length, missing: 0, at: Date.now() });
+              touchClaim(); // الزحف الكامل يتجاوز 200 ثانية، وحجزٌ بطابعٍ قديم يُعدّ متروكًا
+              return yieldTo(step);
+            }
+            if (texts[a] === null) failed++; else scanOne(texts[a]);
+            texts[a] = null; // حرّر النص فورًا بدل احتجاز الدفعة كلها
+            a++;
+            yieldTo(chew); // ملف واحد لكل مهمة
+          })();
+        });
+      }
+      // تحرير موارد الزحف. مُرحِّل الرسائل (MessageChannel) يبقى حيًّا ما بقيت الصفحة إن
+      // لم يُغلق، ومعه طابور المهام وخريطة الملفات المرئية — فكل فحص يترك أثره في الذاكرة
+      // إلى الأبد. والصفحة هنا تبقى مفتوحة ساعاتٍ، وقد يُعاد الفحص مرارًا.
+      function releaseResources() {
+        if (mc) {
+          try { mc.port1.onmessage = null; mc.port1.close(); mc.port2.close(); } catch (e) {}
+          mc = null;
+        }
+        mcQueue.length = 0;
+        queue.length = 0;
+        seen = null;
+      }
+      function abort() {
+        scanning = false; cancelScan = false; releaseScan(); releaseResources();
+        setScan({ status: "cancelled", fetched: fetched, found: found });
+      }
+      function finish() {
+        // تصنيف ذكي: نص ثابت (مطابقة حرفية) مقابل نص فيه متغيّرات (يصير نمطًا)
+        var plain = [], vars = [];
+        for (var s in msgs) {
+          if (active.strings[s] !== undefined) continue;
+          if (tryPlural(s) !== null) continue;
+          if (tryPatterns(s) !== null) continue;
+          if (/\{[A-Za-z_$][\w$]*\}/.test(s)) vars.push(s); else plain.push(s);
+        }
+        plain.sort(); vars.sort();
+        // ★ العدد الحقيقي **قبل** القصّ: نسبة التغطية في صفحة الإعدادات تُحسب من `missing`،
+        // فلو حُسبت من المقصوص كذبت متى تجاوز غيرُ المترجَم السقف — تقول «4000 غير مترجَم»
+        // وهي في الحقيقة أكثر، فتظهر التغطية أفضل مما هي. القائمتان تُقصّان (حمايةً للتخزين)
+        // أما العدّ فيبقى صادقاً.
+        var missingTotal = plain.length + vars.length;
+        var capped = false;
+        var CAP = 4000; // حدّ يحمي مساحة التخزين
+        if (missingTotal > CAP) {
+          capped = true;
+          vars = vars.slice(0, Math.min(vars.length, Math.floor(CAP / 2)));
+          plain = plain.slice(0, CAP - vars.length);
+        }
+        scanning = false;
+        cancelScan = false;
+        releaseScan();
+        releaseResources();
+        setScan({
+          status: "done", fetched: fetched, found: found, capped: capped,
+          failed: failed,                   // ملفات تعذّر جلبها — نتيجةٌ ناقصة لا كاملة
+          missing: missingTotal,            // الحقيقي (قد يفوق المعروض عند القصّ)
+          shown: plain.length + vars.length, // المعروض في القائمتين
+          list: plain, varList: vars,
+          at: Date.now(), seconds: Math.round((Date.now() - t0) / 1000),
+        });
+      }
+      step();
+    })();
+  }
+
+  function fullPass() {
+    applyChrome();
+    if (state.enabled && active) walk(document.body || document.documentElement);
+    else if (!state.enabled) restoreAll(); // أُوقفت الترجمة: أرجِع ما ترجمناه فورًا
+    // الإيقاف يجب أن يرفع أثر الإضافة كاملًا: كان dir="auto" وdata-cml-dir يبقيان على
+    // رسائل المحادثة بعد الإيقاف بلا سبيل لإزالتهما إلا بإعادة تحميل الصفحة.
+    applyChatDir(document.body || document.documentElement);
+  }
+
+  function start() {
+    compile(); applyChrome();
+    if (document.body) fullPass();
+    else document.addEventListener("DOMContentLoaded", fullPass, { once: true });
+    try {
+      obs.observe(document.documentElement, {
+        childList: true, subtree: true, characterData: true,
+        attributes: true, attributeFilter: ATTRS,
+      });
+    } catch (e) {}
+  }
+
+  // ---------- settings (chrome.storage) ----------
+  // مفاتيح من بناءات ما قبل النشر لم تعد الإضافة تكتبها ولا تقرؤها. تُحذف مرّةً واحدة
+  // من أجهزة من جرّب تلك البناءات، فلا يبقى في تخزينه ما لا تستعمله الإضافة.
+  var UNUSED_KEYS = ["cml_collect", "cml_collected"];
+  function purgeUnusedKeys() {
+    try {
+      chrome.storage.local.get(UNUSED_KEYS, function (r) {
+        var found = UNUSED_KEYS.filter(function (k) { return r[k] !== undefined; });
+        if (found.length) chrome.storage.local.remove(found);
+      });
+    } catch (e) {}
+  }
+
+  function loadSettings(cb) {
+    try {
+      chrome.storage.local.get(["cml_lang", "cml_enabled", "cml_overrides", "cml_user_patterns", "cml_rtl", "cml_chatrtl"], function (r) {
+        if (r.cml_lang) state.lang = r.cml_lang;
+        if (typeof r.cml_enabled === "boolean") state.enabled = r.cml_enabled;
+        if (r.cml_overrides) state.overrides = r.cml_overrides;
+        if (Array.isArray(r.cml_user_patterns)) state.userPatterns = r.cml_user_patterns;
+        if (typeof r.cml_rtl === "boolean") state.rtl = r.cml_rtl;
+        if (typeof r.cml_chatrtl === "boolean") state.chatrtl = r.cml_chatrtl;
+        purgeUnusedKeys();
+        cb();
+      });
+    } catch (e) { cb(); }
+  }
+  try {
+    chrome.storage.onChanged.addListener(function (ch, area) {
+      if (area !== "local") return;
+      var relevant = false;
+      if (ch.cml_lang) { state.lang = ch.cml_lang.newValue || L10N.default; relevant = true; }
+      if (ch.cml_enabled) { state.enabled = ch.cml_enabled.newValue !== false; relevant = true; }
+      if (ch.cml_overrides) { state.overrides = ch.cml_overrides.newValue || {}; relevant = true; }
+      if (ch.cml_user_patterns) { state.userPatterns = ch.cml_user_patterns.newValue || []; relevant = true; }
+      // ملاحظة: «إعادة الضبط» تحذف المفاتيح فتصل هنا newValue=undefined. الافتراض الصحيح
+      // للـRTL هو التفعيل (كما في loadState وصفحة الإعدادات)، فلا يصح `=== true` هنا وإلا
+      // انقلبت الصفحة المفتوحة إلى LTR بينما الإعدادات تعرضها مفعّلة.
+      if (ch.cml_rtl) { state.rtl = ch.cml_rtl.newValue !== false; relevant = true; }
+      if (ch.cml_chatrtl) { state.chatrtl = ch.cml_chatrtl.newValue !== false; relevant = true; }
+      if (ch.cml_scan_request && ch.cml_scan_request.newValue) runScan(); // طلب فحص من صفحة الإعدادات
+      if (ch.cml_scan_cancel && ch.cml_scan_cancel.newValue) cancelScan = true;
+      if (relevant) { compile(); fullPass(); }
+    });
+  } catch (e) {}
+
+  // immediate default (reduce RTL flash), then refine from storage
+  compile(); applyChrome();
+  loadSettings(start);
+})();

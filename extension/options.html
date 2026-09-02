@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>إعدادات تعريب كلود للويب</title>
+  <style>
+    /* ══ الألوان ══
+       --brand لون الأيقونة نفسه (#D97757). يُستعمل للتعبئة الصامتة: المفاتيح المفعّلة
+       وحلقة التركيز — حيث لا نصّ فوقه، فلا مشكلة في قراءته.
+       --accent أخوه الأدكن (#A34E30) لكل ما يحمل نصًّا: الروابط والأزرار.
+       ولمَ لا نستعمل لون الأيقونة للنصّ أيضًا؟ لأن تباينه على الخلفية الفاتحة **2.97**
+       والمطلوب 4.5 — أي نصٌّ يصعب قراءته حقًّا، لا مسألة ذوق. والأدكن يعطي 5.41.
+       وهما من عائلة لونية واحدة فيُقرآن نظامًا واحدًا لا لونين. */
+    :root {
+      --bg:#faf9f7; --card:#ffffff; --fg:#1a1a19; --mut:#6b6b68; --line:#e3e1dc;
+      --brand:#d97757; --accent:#a34e30; --accent-fg:#ffffff; --ok:#a34e30;
+      --danger:#b3261e; --danger-bg:#fbeceb;
+      --tag-bg:#fbe6de; --tag-fg:#8f4426;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:#1f1e1d; --card:#272625; --fg:#f3f2ef; --mut:#a3a29e; --line:#3a3937;
+        /* في الداكن ينعكس المنطق: اللون الفاتح هو المقروء (تباينه 7.79) */
+        --brand:#d97757; --accent:#e9a084; --accent-fg:#2a1610; --ok:#e9a084;
+        --danger:#f2b8b5; --danger-bg:#3a2422;
+        --tag-bg:#3a2419; --tag-fg:#f0b79b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:24px 16px 60px; background:var(--bg); color:var(--fg);
+      font-family:"Segoe UI",Tahoma,sans-serif; font-size:14px; line-height:1.6; }
+    .wrap { max-width:660px; margin:0 auto; }
+    header h1 { font-size:20px; margin:0 0 2px; }
+    header .sub { color:var(--mut); font-size:13px; margin:0 0 4px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-top:16px; }
+    .card > h2 { font-size:15px; margin:0 0 4px; }
+    .card > .desc { color:var(--mut); font-size:12.5px; margin:0 0 10px; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid var(--line); }
+    .row:first-of-type { border-top:none; }
+    .row label { font-weight:600; }
+    select, input, button, textarea { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
+    button { cursor:pointer; }
+    button:hover { border-color:var(--accent); }
+    .primary { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); }
+    .primary:hover { filter:brightness(1.06); }
+    .ghost { background:transparent; }
+    .btnrow { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .switch { position:relative; width:42px; height:24px; flex:none; }
+    .switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+    .slider { position:absolute; inset:0; background:var(--line); border-radius:24px; transition:.2s; pointer-events:none; }
+    .slider::before { content:""; position:absolute; height:18px; width:18px; right:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
+    .switch input:checked + .slider { background:var(--brand); }  /* تعبئة بلا نصّ ⇒ لون الأيقونة نفسه */
+    .switch input:checked + .slider::before { transform:translateX(-18px); }
+    .switch input:focus-visible + .slider { outline:2px solid var(--brand); outline-offset:2px; }
+    .status { color:var(--ok); font-size:12.5px; min-height:18px; margin-top:8px; }
+    .count { color:var(--mut); font-size:12.5px; }
+    .search { width:100%; margin:2px 0 8px; }
+    .terms { width:100%; }
+    .term { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+    .term:first-child { border-top:none; }
+    .term .src { font-weight:600; word-break:break-word; direction:ltr; text-align:start; unicode-bidi:plaintext; }
+    .term input { width:100%; }
+    .term .acts { display:flex; gap:6px; }
+    .term .acts button { padding:6px 9px; }
+    .empty { color:var(--mut); font-size:12.5px; padding:8px 0; }
+    /* بحث القاموس الأساسي: فاصل بين «تصحيحاتك» و«القاموس»، ووسمٌ يميّز مصدر السطر */
+    .grp { font-size:12px; font-weight:700; color:var(--mut); padding:12px 0 4px; border-top:1px solid var(--line); margin-top:6px; }
+    .grp:first-child { border-top:none; margin-top:0; }
+    .tag { font-size:10.5px; font-weight:600; padding:1px 6px; border-radius:20px; white-space:nowrap;
+           background:var(--line); color:var(--mut); margin-inline-start:6px; vertical-align:middle; }
+    .tag.mine { background:var(--tag-bg); color:var(--tag-fg); }
+    .tag.miss { background:var(--danger-bg); color:var(--danger); }
+    /* دائرتا نسبة التغطية */
+    .stats { display:flex; gap:18px; align-items:center; flex-wrap:wrap; margin:4px 0 14px; }
+    .donut { position:relative; width:76px; height:76px; flex:none; }
+    .donut svg { transform:rotate(-90deg); display:block; }
+    .donut circle { transition:stroke-dasharray .5s ease; }
+    .donut .pct { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14.5px; }
+    .cap { text-align:center; font-size:11.5px; color:var(--mut); margin-top:4px; }
+    .statTxt { font-size:12.5px; color:var(--mut); line-height:1.8; flex:1; min-width:210px; }
+    .more { color:var(--mut); font-size:12px; padding:8px 0; }
+    .danger { border-color:var(--danger); }
+    .danger h2 { color:var(--danger); }
+    .btn-danger { color:var(--danger); border-color:var(--danger); background:var(--danger-bg); }
+    .about .privacy { color:var(--mut); font-size:12.5px; line-height:1.7; }
+    code { background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:0 4px; }
+    a { color:var(--accent); }
+    .hidden { display:none !important; }
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .modal { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; width:100%; max-width:560px; max-height:85vh; overflow:auto; box-shadow:0 8px 40px rgba(0,0,0,.25); }
+    .modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+    .modal-head h2 { margin:0; font-size:16px; }
+    .icon-btn { border:none; background:transparent; font-size:16px; cursor:pointer; padding:4px 8px; color:var(--mut); }
+    .icon-btn:hover { color:var(--fg); }
+    .modal-list { max-height:46vh; overflow:auto; margin-top:4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1 id="appName">تعريب كلود للويب</h1>
+      <p class="sub">إعدادات عرض واجهة claude.ai بالعربية</p>
+    </header>
+
+    <!-- General -->
+    <section class="card">
+      <h2>عام</h2>
+      <div class="row">
+        <label for="enabled">تفعيل التعريب</label>
+        <span class="switch"><input type="checkbox" id="enabled" aria-label="تفعيل التعريب"><span class="slider"></span></span>
+      </div>
+      <div class="row">
+        <label for="rtl">قلب اتجاه الصفحة (RTL)</label>
+        <span class="switch"><input type="checkbox" id="rtl" aria-label="قلب اتجاه الصفحة"><span class="slider"></span></span>
+      </div>
+      <div class="row">
+        <label for="chatrtl">ضبط اتجاه نص المحادثة</label>
+        <span class="switch"><input type="checkbox" id="chatrtl" aria-label="ضبط اتجاه نص المحادثة"><span class="slider"></span></span>
+      </div>
+    </section>
+
+    <!-- قاموس التعريب: المصدر (قاموس الإضافة + ما يجلبه الفحص) وميزة التصحيح فوقه -->
+    <section class="card">
+      <h2>قاموس التعريب — المصدر وتحديثه</h2>
+      <p class="desc">
+        هذا مصدرُ التعريب كلُّه في مكان واحد، ويتكوّن من جزأين:
+      </p>
+      <ul class="desc" style="margin:6px 0 8px;padding-inline-start:20px;line-height:1.9">
+        <li><b>قاموس الإضافة</b> — بُني أثناء تطوير الإضافة بفحص ملفات الموقع وترجمتها، ويأتيك جاهزًا معها.</li>
+        <li><b>ما يجلبه الفحص عندك</b> — «تحديث المصدر» أدناه يقرأ ملفات الموقع فيجد النصوص الجديدة <b>غير المترجمة</b>، فتظهر هنا لتترجمها بالاستيراد أو مباشرةً سطرًا سطرًا.</li>
+      </ul>
+      <p class="desc" style="margin-bottom:10px">
+        وفوق المصدر <b>ميزةُ التصحيح اليدوي</b>: عدّل أي ترجمة فيحلّ تعديلُك محلّها فورًا —
+        تصحيحُك ميزةٌ فوق المصدر، لا مصدرٌ ثالث.
+      </p>
+
+      <!-- نسبتا التغطية -->
+      <div class="stats" id="statsBox">
+        <div>
+          <div class="donut">
+            <svg width="76" height="76" viewBox="0 0 76 76" aria-hidden="true">
+              <circle cx="38" cy="38" r="32" fill="none" stroke="var(--line)" stroke-width="9"/>
+              <circle id="donutT" cx="38" cy="38" r="32" fill="none" stroke="var(--brand)" stroke-width="9"
+                      stroke-linecap="round" stroke-dasharray="0 201.06"/>
+            </svg>
+            <div class="pct" id="pctT">؟</div>
+          </div>
+          <div class="cap">المترجَم</div>
+        </div>
+        <div>
+          <div class="donut">
+            <svg width="76" height="76" viewBox="0 0 76 76" aria-hidden="true">
+              <circle cx="38" cy="38" r="32" fill="none" stroke="var(--line)" stroke-width="9"/>
+              <circle id="donutU" cx="38" cy="38" r="32" fill="none" stroke="var(--danger)" stroke-width="9"
+                      stroke-linecap="round" stroke-dasharray="0 201.06"/>
+            </svg>
+            <div class="pct" id="pctU">؟</div>
+          </div>
+          <div class="cap">غير المترجَم</div>
+        </div>
+        <div class="statTxt" id="statLine">…</div>
+      </div>
+
+      <!-- مراجعة ما بعد التحديث: يظهر فقط متى صار لتصحيحاتك مقابلٌ في القاموس -->
+      <div class="card hidden" id="reconBox" style="border-color:var(--brand);margin:0 0 12px;padding:12px 14px">
+        <h2 style="font-size:14px;margin:0 0 6px">🔄 تصحيحاتك بعد تحديث الإضافة</h2>
+        <p class="desc" style="margin:0 0 8px">
+          <b>تصحيحاتك محفوظة ولم يمسّها التحديث</b> — فهي في تخزين متصفحك لا في ملفات الإضافة.
+          لكن بعضها صار له الآن مقابلٌ في قاموس الإضافة، وتصحيحُك يحلّ محلّه دائمًا. وهذه مراجعتك:
+        </p>
+        <div class="desc" id="reconLines" style="line-height:2"></div>
+        <div class="btnrow" style="margin-top:8px">
+          <button id="reconShowDiff">راجع المختلفة</button>
+          <button id="reconDropSame">احذف المطابقة</button>
+          <button class="ghost" id="reconDismiss">أغلق</button>
+        </div>
+        <p class="desc" style="margin-top:8px;color:var(--mut)">
+          لا يُحذف شيء إلا بضغطك. وقبل أي حذف، صدّر نسخةً من «تصدير تصحيحاتك فقط» أدناه.
+        </p>
+      </div>
+
+      <!-- البحث والتصفية بالمصدر -->
+      <div class="row" style="border:none;padding:0;gap:8px">
+        <input id="termSearch" class="search" style="margin:0;flex:1" placeholder="ابحث بالعربية أو الإنجليزية…" aria-label="بحث في قاموس التعريب">
+        <select id="termFilter" aria-label="تصفية بحسب المصدر" style="flex:none">
+          <option value="all">الكل</option>
+          <option value="dict">قاموس الإضافة (المترجَم)</option>
+          <option value="missing">غير المترجَم (من الفحص)</option>
+          <option value="mine">تصحيحاتك</option>
+          <option value="diverged">تصحيحاتك المختلفة عن القاموس</option>
+        </select>
+      </div>
+      <p class="desc" style="margin:6px 0 0">
+        <b>لتصحيح ترجمة رأيتها في الموقع</b>: اكتب كلمةً منها — بالعربية كما ظهرت لك أو بالإنجليزية —
+        فتظهر من القاموس فتعدّلها مباشرة. واختر «غير المترجَم» لتَرى ما جلبه الفحص وتترجمَه سطرًا سطرًا.
+      </p>
+
+      <div class="terms" id="termsList"></div>
+      <div class="status" id="termsStatus" role="status" aria-live="polite"></div>
+
+      <!-- تصحيح يدوي سريع (ميزة، لا مصدر) -->
+      <div class="row" style="border:none;padding-top:8px;gap:8px">
+        <input id="newSrc" placeholder="النص الإنجليزي" aria-label="النص الإنجليزي" style="flex:1;direction:ltr;text-align:start">
+        <input id="newDst" placeholder="ترجمتك" aria-label="ترجمتك" style="flex:1">
+        <button class="primary" id="addTerm">إضافة تصحيح</button>
+      </div>
+
+      <div class="btnrow" id="scanActions">
+        <button class="primary" id="scanExport">تنزيل أمر الترجمة</button>
+        <button id="scanImportBtn">استيراد الترجمات</button>
+        <input type="file" id="importTransFile" accept="application/json,.json" class="hidden" aria-hidden="true">
+      </div>
+      <div class="btnrow">
+        <button id="exportSrcBare">تصدير المصدر بلا ترجمة</button>
+        <button id="exportSrcFull">تصدير المصدر مترجَمًا</button>
+        <button id="exportOv">تصدير تصحيحاتك فقط</button>
+        <button class="btn-danger" id="clearAllOv">حذف كل تصحيحاتك</button>
+      </div>
+      <p class="desc" style="margin-top:8px">
+        <b>تصدير المصدر بلا ترجمة</b>: كل النصوص الإنجليزية وحدها (حقل الترجمة فارغ) — لمن أراد
+        <b>ترجمة المصدر من جديد</b> بأسلوبه أو إلى لغة أخرى، ثم يستورده هنا.<br>
+        <b>تصدير المصدر مترجَمًا</b>: النصوص مع ترجماتها كما هي عندك الآن (قاموس الإضافة + تصحيحاتك)
+        — للمراجعة، أو للنقل إلى جهاز آخر، أو للإسهام على مستودع المشروع.<br>
+        <b>تصدير تصحيحاتك فقط</b>: ما عدّلتَه أنت وحده، نسخةً احتياطية خفيفة.
+        <br><span style="color:var(--mut)">الملفات الثلاثة بصيغة واحدة يقبلها «استيراد الترجمات».</span>
+      </p>
+      <details style="margin-top:10px">
+        <summary class="desc" style="cursor:pointer">كيف أترجم ما جلبه الفحص؟</summary>
+        <div class="desc" style="margin-top:6px">
+          ١) اضغط «تنزيل أمر الترجمة» فيُنزَّل ملف فيه <b>الأمر كاملًا</b> (التعليمات + النصوص غير المترجمة).<br>
+          ٢) افتح محادثة في claude.ai وألصق محتوى الملف.<br>
+          ٣) احفظ ردّ كلود في ملف <code>.json</code> ثم اضغط «استيراد الترجمات».<br>
+          أو — للقليل منها — اختر «غير المترجَم» في التصفية أعلاه واكتب الترجمة في السطر نفسه.<br><br>
+          <b>النصوص المتغيّرة</b> (مثل <code>Delete {count} chats?</code>) تُحوَّل عند الحفظ إلى
+          <b>قواعد ذكية</b> تعمل مع كل القيم — فترجمة واحدة تكفي لكل الأعداد والأسماء.
+          و«استيراد الترجمات» يقبل أيضًا نسخك الاحتياطية المصدَّرة.
+        </div>
+      </details>
+    </section>
+
+    <!-- تحديث المصدر: الفحص وحده -->
+    <section class="card">
+      <h2>تحديث المصدر — فحص الموقع</h2>
+      <p class="desc">
+        يتغيّر موقع claude.ai باستمرار وتُضاف إليه نصوص جديدة. يقرأ الفحص ملفات الموقع كلها
+        ويقارنها بالمصدر، فيقيس نسبة التغطية ويجلب <b>غير المترجَم</b> إلى «قاموس التعريب» أعلاه —
+        حيث تجد النِّسَب والقائمة وأدوات الترجمة.
+      </p>
+      <p class="desc" style="color:#8a5a2b">
+        افتح تبويب <b>claude.ai</b> واتركه مفتوحًا، ثم اضغط «ابدأ الفحص». يستغرق دقيقة أو دقيقتين.
+      </p>
+      <div class="row" style="border:none;padding-top:2px">
+        <span class="count" id="scanCount">لم يُجرَ فحص بعد</span>
+        <span style="display:flex;gap:8px">
+          <button class="primary" id="startScan">ابدأ الفحص</button>
+          <button class="btn-danger hidden" id="cancelScan">إيقاف</button>
+        </span>
+      </div>
+      <div class="status" id="scanStatus" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="card danger">
+      <h2>إعادة الضبط</h2>
+      <p class="desc">يحذف كل إعداداتك وتصحيحاتك والقواعد الذكية ونتيجة الفحص، ويعيد كل شيء لحالته الأولى. لا يمكن التراجع.</p>
+      <div class="row" style="border:none">
+        <label>إعادة ضبط كل الإعدادات</label>
+        <button class="btn-danger" id="resetAll">إعادة الضبط</button>
+      </div>
+      <div class="status" id="dangerStatus" role="status" aria-live="polite" style="color:var(--danger)"></div>
+    </section>
+
+    <!-- About + privacy -->
+    <section class="card about">
+      <h2>حول الإضافة والخصوصية</h2>
+      <p><strong id="aboutName">تعريب كلود للويب</strong> · <span id="aboutVersion">v—</span></p>
+      <p class="privacy"><b>كيف تعمل بالضبط:</b> تطابق الإضافة نصوص الواجهة بقاموس مضمَّن داخلها، فإن وجدت للنصّ ترجمةً كتبتها مكانه، وإلّا تركته كما هو. فهي تكتب <b>داخل</b> الصفحة ولا تأخذ منها شيئًا.</p>
+      <p class="privacy"><b>ولا تخزّن شيئًا مما يظهر على شاشتك ولا ترسله إلى أي جهة</b> — لا عناوين محادثاتك، ولا أسماء مشاريعك، ولا نصوص رسائلك. ونصّ المحادثات مستثنًى من الترجمة أصلًا فلا تلمسه. ولا اتصال بأي خادم إطلاقًا.</p>
+      <p class="privacy">«تحديث المصدر — فحص الموقع» يجري <b>بضغطة منك وحدك</b>، ولا يقرأ إلا <b>ملفات claude.ai العامة</b> — وهي نفسها التي ينزّلها متصفحك لعرض الصفحة — ليستخرج منها نصوص الواجهة ويعرف ما لم يُترجَم. لا يمسّ صفحتك ولا محتواك، ولا يتصل بغير موقع claude.ai، والنتيجة تبقى على جهازك.</p>
+      <p class="privacy">الصلاحية الوحيدة التي تطلبها الإضافة هي <code>storage</code>، ووظيفتها حفظ تفضيلاتك وكلماتك على جهازك وحده. ولا تطلب صلاحية قراءة بياناتك في المواقع، ولا صلاحية الشبكة، ولا غيرهما.</p>
+      <p class="privacy"><b>🛡 ماذا يحدث لترجماتك عند تحديث الإضافة؟</b> <b>لا شيء — تبقى كما هي.</b> تصحيحاتك وترجماتك محفوظة في تخزين متصفحك لا في ملفات الإضافة، والتحديث يستبدل الملفات ولا يمسّ التخزين. ولا يوجد في هذه الإضافة سطرٌ واحد يحذف تصحيحًا إلا بضغطة صريحة منك («احذف كل تصحيحاتك» أو «إعادة الضبط»).<br>
+        وتصحيحك <b>يحلّ محلّ القاموس دائمًا</b> — فلو ترجمتَ نصًّا ثم جاء التحديث بترجمة له، بقيت ترجمتُك أنت هي الظاهرة. ولئلا يظلّ تصحيحك مُظلِّلًا تحسينًا لاحقًا وأنت لا تدري، تظهر لك بعد التحديث لوحةُ <b>«تصحيحاتك بعد تحديث الإضافة»</b> في «قاموس التعريب» أعلاه: تعرض ما صار مطابقًا للقاموس (فلا فائدة منه) وما يخالفه (فالقرار قرارك)، ولا تحذف شيئًا إلا بأمرك.<br>
+        <span style="color:var(--mut)">وللاطمئنان التامّ قبل أي تحديث: «تصدير تصحيحاتك فقط» يحفظ جهدك في ملف تستعيده متى شئت.</span></p>
+      <p class="privacy"><b>كيف أُنجز التعريب:</b> مصدرُه جزآن — <b>قاموس الإضافة</b> الذي بُني أثناء تطويرها بفحص ملفات الموقع وترجمتها بمعونة <b>Claude Code</b> (أداة Anthropic للبرمجة بالذكاء الاصطناعي) على قواعد مصطلحية ثابتة وضعها صاحب المشروع مع تدقيق آلي ومراجعة لكل نصّ، و<b>ما يجلبه الفحص عندك</b> من نصوص الموقع الجديدة فتترجمها أنت. ومع ذلك تبقى في الترجمة أخطاء ولا بدّ — <b>ولهذا صُنعت ميزة التصحيح</b> في «قاموس التعريب»: ما استُشكل عليك صحّحه لنفسك في ثانية، أو اقترحه للجميع على مستودع المشروع.</p>
+      <p class="privacy"><b>📖 مفتوح المصدر — الشيفرة والقاموس كاملين:</b><br>
+        <a href="https://github.com/al-ashalash/claude-ai-arabic-chrome" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent);font-weight:700;word-break:break-all">github.com/al-ashalash/claude-ai-arabic-chrome</a><br>
+        كلُّ سطر من هذه الإضافة معروض هناك للقراءة والتدقيق — فما قلناه عن الخصوصية يمكنك التحقق منه بنفسك لا أن تأخذه تصديقًا.
+        ووجدتَ ترجمةً خاطئة أو أردتَ اقتراح تحسين؟
+        <a href="https://github.com/al-ashalash/claude-ai-arabic-chrome/issues" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent);font-weight:700">افتح مسألة هناك</a> فيستفيد الجميع، أو صحّحه لنفسك من «قاموس التعريب» أعلاه.</p>
+      <p class="privacy">امتداد مستقل غير رسمي، ليس من إنتاج شركة Anthropic ولا تابعًا لها. Claude وClaude.ai علامتان تجاريتان لمالكهما.</p>
+    </section>
+  </div>
+
+  <!-- القاموس الأساسي: يلزم هنا ليتمكن البحث من عرض مفرداته وتعديلها مباشرة -->
+  <script src="dictionary.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

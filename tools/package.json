@@ -1,0 +1,14 @@
+{
+  "name": "claude-mutarjim-toolchain",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PO/MO + dictionary toolchain for claude-mutarjim. Zero dependencies (pure Node).",
+  "scripts": {
+    "build": "node build.mjs",
+    "export-po": "node json2po.mjs",
+    "import-po": "node po2json.mjs",
+    "import-mo": "node mo2json.mjs",
+    "compile-mo": "node po2mo.mjs"
+  }
+}

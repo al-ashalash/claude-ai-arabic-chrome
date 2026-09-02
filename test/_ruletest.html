@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>rule generator test</title>
+  <style>
+    body { font-family:"Segoe UI",Tahoma,sans-serif; padding:24px; background:#faf9f7; color:#1a1a19; }
+    table { border-collapse:collapse; width:100%; max-width:900px; font-size:13px; }
+    td,th { border:1px solid #e3e1dc; padding:6px 8px; text-align:start; }
+    th { background:#f1efe9; }
+    .ok { color:#2e7d32; font-weight:bold; }
+    .bad { color:#b3261e; font-weight:bold; }
+    code { background:#efeee9; padding:1px 4px; border-radius:4px; direction:ltr; display:inline-block; }
+    h2 { font-size:16px; }
+  </style>
+</head>
+<body>
+  <h1 style="font-size:19px">اختبار مولّد القواعد الذكية</h1>
+  <p>يتحقق من <code>makePattern</code> في options.js: التوليد الصحيح، و<b>حارس الأمان</b> الذي يمنع
+     قاعدةً تبتلع نصوص الصفحة كلها.</p>
+  <div id="out" style="font-weight:bold;margin:12px 0"></div>
+  <table id="tbl"><thead><tr><th>الحالة</th><th>الإنجليزي</th><th>العربي</th><th>المتوقع</th><th>النتيجة</th></tr></thead><tbody></tbody></table>
+
+<script>
+// ===== نسخة طبق الأصل من makePattern في options.js =====
+var VAR_RE = /\{([A-Za-z_$][\w$]*)\}/g;
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function makePattern(en, ar) {
+  VAR_RE.lastIndex = 0;
+  var names = [], m;
+  while ((m = VAR_RE.exec(en))) names.push(m[1]);
+  if (!names.length) return null;
+  if (names.length > 3) return null;
+  var literal = en.replace(VAR_RE, "").trim();
+  if (literal.length < 6) return null;
+  if (!/[A-Za-z]{3}/.test(literal)) return null;
+  if (/\}[\s ]*\{/.test(en)) return null;   // متغيّران متلاصقان ⇒ (.+?)(.+?) ⇒ تراجع أسّي
+  if (/\$\d/.test(ar)) return null;         // «$5» في الترجمة يُقرأ مجموعةً ملتقطة فيُفسد الناتج
+  var t = en.trim();
+  var startsVar = /^\{[A-Za-z_$][\w$]*\}/.test(t);
+  var endsVar = /\{[A-Za-z_$][\w$]*\}$/.test(t);
+  if (startsVar && endsVar) return null;
+  VAR_RE.lastIndex = 0;
+  var arNames = [], m2;
+  while ((m2 = VAR_RE.exec(ar))) arNames.push(m2[1]);
+  for (var i = 0; i < arNames.length; i++) if (names.indexOf(arNames[i]) < 0) return null;
+  var re = "^", idx = 0, mm;
+  VAR_RE.lastIndex = 0;
+  while ((mm = VAR_RE.exec(en))) {
+    re += escapeRe(en.slice(idx, mm.index)) + "(.+?)";
+    idx = mm.index + mm[0].length;
+  }
+  re += escapeRe(en.slice(idx)) + "$";
+  var arOut = ar.replace(VAR_RE, function (whole, name) {
+    var pos = names.indexOf(name);
+    return pos < 0 ? whole : "$" + (pos + 1);
+  });
+  try { new RegExp(re); } catch (e) { return null; }
+  return { en: en, re: re, ar: arOut };
+}
+
+// ===== الحالات =====
+var cases = [
+  // --- يجب أن تُقبل وتعمل ---
+  { name: "متغيّر واحد", en: "Delete {count} chats?", ar: "حذف {count} محادثة؟",
+    accept: true, sample: "Delete 12 chats?", expect: "حذف 12 محادثة؟" },
+  { name: "متغيّران بالترتيب", en: "Moved {file} to {folder}", ar: "نُقل {file} إلى {folder}",
+    accept: true, sample: "Moved a.txt to Docs", expect: "نُقل a.txt إلى Docs" },
+  { name: "متغيّر في البداية ونصّ ثابت في النهاية", en: "{count} files selected", ar: "حُدّد {count} ملفًّا",
+    accept: true, sample: "7 files selected", expect: "حُدّد 7 ملفًّا" },
+  { name: "ترتيب معكوس في العربية (مرساة في الطرفين)", en: "User {user} shared {doc} now", ar: "شارك {doc} من {user} الآن",
+    accept: true, sample: "User Sara shared plan.pdf now", expect: "شارك plan.pdf من Sara الآن" },
+  { name: "رموز تحتاج هروبًا (؟ . +)", en: "Really delete {n} items? (+1 more)", ar: "أتحذف {n} عنصرًا فعلًا؟ (+1 غيرها)",
+    accept: true, sample: "Really delete 3 items? (+1 more)", expect: "أتحذف 3 عنصرًا فعلًا؟ (+1 غيرها)" },
+
+  // --- يجب أن تُرفض (حارس الأمان) ---
+  { name: "متغيّر وحده — يبتلع كل شيء", en: "{name}", ar: "{name}", accept: false },
+  { name: "متغيّر في الطرفين بلا مرساة — «{a} of {b}» يطابق «Terms of Service»", en: "{a} of {b}", ar: "{a} من {b}", accept: false },
+  { name: "متغيّر في الطرفين ولو طال الثابت", en: "{user} shared a document with {who}", ar: "شارك {user} مستندًا مع {who}", accept: false },
+  { name: "بلا حروف لاتينية في الثابت", en: "{a} — {b} :: {c}", ar: "{a} — {b} :: {c}", accept: false },
+  { name: "متغيّر مخترع في العربية", en: "Deleted {count} files", ar: "حُذف {count} من {total}", accept: false },
+  { name: "بلا متغيّرات أصلًا", en: "Delete all chats?", ar: "حذف كل المحادثات؟", accept: false },
+  { name: "متغيّرات أكثر من ستة", en: "a{a}b{b}c{c}d{d}e{e}f{f}g{g}here", ar: "x{a}{b}{c}{d}{e}{f}{g}", accept: false },
+
+  // --- حارس التراجع الأسّي (ReDoS) — أُضيف 2026-08-14 ---
+  { name: "متغيّران متلاصقان — (.+?)(.+?) زمنه أسّي", en: "Renamed to {old}{new} today", ar: "أُعيدت التسمية إلى {old}{new} اليوم", accept: false },
+  { name: "متغيّران بينهما بياض فقط", en: "Shared {user} {doc} with team", ar: "شارك {user} {doc} مع الفريق", accept: false },
+  { name: "أكثر من ثلاثة متغيّرات (السقف شُدّد من ٦ إلى ٣)", en: "Copy {a} and {b} and {c} and {d} now", ar: "انسخ {a} و{b} و{c} و{d} الآن", accept: false },
+  { name: "ثلاثة متغيّرات بفواصل ثابتة — تُقبل", en: "Moved {file} from {src} to {dst}", ar: "نُقل {file} من {src} إلى {dst}",
+    accept: true, sample: "Moved a.txt from Inbox to Docs", expect: "نُقل a.txt من Inbox إلى Docs" },
+  { name: "فاصل ثابت قصير («to») — يبقى مقبولًا", en: "Moved {file} to {folder}", ar: "نُقل {file} إلى {folder}",
+    accept: true, sample: "Moved b.txt to Archive", expect: "نُقل b.txt إلى Archive" },
+
+  // --- حارس رمز القالب: $ متبوعة برقم في الترجمة ---
+  { name: "مبلغ حرفي «$20» في الترجمة يُقرأ مجموعةً فيُفسد الناتج", en: "Get {credits} credits for $20", ar: "احصل على {credits} رصيدًا مقابل $20", accept: false },
+  { name: "«$» وحدها بلا رقم لا تضرّ", en: "Balance {amount} in USD", ar: "الرصيد {amount} بالدولار $",
+    accept: true, sample: "Balance 30 in USD", expect: "الرصيد 30 بالدولار $" },
+];
+
+var tb = document.querySelector("#tbl tbody"), pass = 0;
+cases.forEach(function (c) {
+  var p = makePattern(c.en, c.ar);
+  var ok, got;
+  if (!c.accept) {
+    ok = (p === null);
+    got = p === null ? "رُفضت ✓" : "قُبلت ✗ → " + p.re;
+  } else if (!p) {
+    ok = false; got = "رُفضت خطأً ✗";
+  } else {
+    var m = c.sample.match(new RegExp(p.re));
+    if (!m) { ok = false; got = "النمط لا يطابق العيّنة ✗"; }
+    else {
+      var out = p.ar.replace(/\$(\d)/g, function (t, g) { return m[+g] !== undefined ? m[+g] : ""; });
+      ok = out === c.expect;
+      got = out;
+    }
+  }
+  if (ok) pass++;
+  var tr = document.createElement("tr");
+  [c.name, c.en, c.ar, c.accept ? (c.expect || "تُقبل") : "تُرفض", got].forEach(function (v, i) {
+    var td = document.createElement("td");
+    if (i === 4) { td.className = ok ? "ok" : "bad"; }
+    td.textContent = v;
+    tr.appendChild(td);
+  });
+  tb.appendChild(tr);
+});
+
+// اختبار إضافي حاسم: قاعدة مقبولة يجب ألّا تطابق نصًّا لا علاقة له
+var safe = makePattern("Delete {count} chats?", "حذف {count} محادثة؟");
+var falsePositive = new RegExp(safe.re).test("Some unrelated interface label");
+if (!falsePositive) pass++;
+var tr2 = document.createElement("tr");
+["لا مطابقة زائفة", safe.re, "—", "لا يطابق نصًّا أجنبيًّا", falsePositive ? "طابق ✗" : "لم يطابق ✓"].forEach(function (v, i) {
+  var td = document.createElement("td");
+  if (i === 4) td.className = falsePositive ? "bad" : "ok";
+  td.textContent = v; tr2.appendChild(td);
+});
+tb.appendChild(tr2);
+
+var total = cases.length + 1;
+document.getElementById("out").textContent = "RULES-GEN: " + pass + "/" + total + (pass === total ? " — all pass" : " — FAIL");
+document.title = "ruletest " + pass + "/" + total;
+</script>
+</body>
+</html>

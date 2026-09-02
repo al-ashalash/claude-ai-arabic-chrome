@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>scan lock test</title>
+<!--
+  اختبار قفل الفحص (أُضيف 2026-08-15 بعد بلاغ المالك «الفحص لا يعمل»).
+
+  الخلل: أول تحديث حالة في doScan كان يُكتب بلا حقل `at`. فإذا مات الفحص بعده مباشرة
+  (أُغلق تبويب claude.ai، أو أُعيد تحميل الإضافة) بقيت في التخزين نتيجةُ {status:"running"}
+  بلا نبض إلى الأبد. وصفحة الإعدادات تعطّل زر «ابدأ الفحص» في حالة «جارٍ»، ولا تعرض
+  مخرجًا إلا إذا كان النبض متقادمًا — والنبض غير موجود أصلًا، فالشرط لا يتحقق أبدًا
+  ⇒ الزر معطَّل إلى الأبد ولا يبدأ فحصٌ جديد.
+
+  يتحقق هذا الملف من ثلاثة أمور:
+   ١) المحرّك يكتب `at` في **أول** تحديث «جارٍ» لا في التحديثات اللاحقة فقط.
+   ٢) منطق صفحة الإعدادات يعدّ نتيجةً بلا `at` متعثّرةً (لا «جارية») فيفتح الزر.
+   ٣) الحجز يُجدَّد أثناء الزحف فلا يُعدّ الزاحفُ الحيّ متروكًا بعد ٩٠ ثانية.
+-->
+<style>body{font-family:system-ui;padding:16px;max-width:900px;margin:auto}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
+.ok{color:#127a2b;font-weight:700}.bad{color:#b00;font-weight:700}</style>
+
+<h1>اختبار قفل الفحص</h1>
+<table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th><th></th></tr></thead><tbody></tbody></table>
+
+<script src="assets/v1/index-abc123def.js"></script>
+<script>
+// قشرة chrome.storage: تسجّل كل كتابة لنفحص أول تحديث «جارٍ» ونراقب تجديد الحجز
+window.__store = {}; window.__listeners = []; window.__writes = [];
+window.chrome = { storage: {
+  local: {
+    get: function (keys, cb) { cb(Object.assign({}, window.__store)); },
+    set: function (obj, cb) {
+      var ch = {};
+      for (var k in obj) { ch[k] = { newValue: obj[k] }; window.__store[k] = obj[k]; }
+      window.__writes.push(JSON.parse(JSON.stringify(obj)));
+      window.__listeners.forEach(function (fn) { try { fn(ch, "local"); } catch (e) {} });
+      if (cb) cb();
+    },
+  },
+  onChanged: { addListener: function (fn) { window.__listeners.push(fn); } },
+} };
+</script>
+<script src="../extension/dictionary.js"></script>
+<script src="../extension/engine.js"></script>
+<script>
+var tb = document.querySelector("#tbl tbody"), pass = 0, total = 0;
+function check(name, expect, got) {
+  total++; var ok = String(expect) === String(got); if (ok) pass++;
+  var tr = document.createElement("tr");
+  [name, expect, got].forEach(function (v) { var td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+  var s = document.createElement("td"); s.className = ok ? "ok" : "bad"; s.textContent = ok ? "✓" : "✗"; tr.appendChild(s);
+  tb.appendChild(tr);
+}
+
+// ===== نسخة طبق الأصل من منطق «هل الفحص متعثّر؟» في renderScan (options.js) =====
+// الشرط المعطوب كان: (r.at && Date.now() - r.at > 45000)
+function isStalled(r) { return !r.at || Date.now() - r.at > 45000; }
+
+// ٢) منطق صفحة الإعدادات — يُفحص فورًا بلا انتظار المحرّك
+check("نتيجة «جارٍ» بلا نبض تُعدّ متعثّرة (فيُفتح الزر)", "true", isStalled({ status: "running", fetched: 0 }));
+check("نتيجة «جارٍ» بنبض قديم تُعدّ متعثّرة", "true", isStalled({ status: "running", at: Date.now() - 60000 }));
+check("نتيجة «جارٍ» بنبض حديث لا تُعدّ متعثّرة", "false", isStalled({ status: "running", at: Date.now() - 1000 }));
+
+// ★ إشعار الاستلام: يجب أن يُكتب **فورًا** عند وصول الطلب، قبل الحجز وقبل أول جلب.
+// بدونه يصمت المحرّك في كل مسارات الرفض فتقول صفحة الإعدادات «لم يستجب أي تبويب» كذبًا،
+// ويضيع الفرق بين «لا سكربت حيّ» و«سكربت حيّ امتنع» — وهو الفرق الذي يحدّد ما يفعله المستخدم.
+var ackMs = null, reqAt = 0;
+setTimeout(function () {
+  reqAt = Date.now();
+  chrome.storage.local.set({ cml_scan_request: reqAt });
+  // اقرأ فورًا (متزامنًا مع القشرة الوهمية) هل وصل إشعار الاستلام
+  var r = window.__store.cml_scan_result;
+  if (r && r.status === "running") ackMs = Date.now() - reqAt;
+}, 300);
+
+var t0 = Date.now();
+var poll = setInterval(function () {
+  var r = window.__store.cml_scan_result;
+  if (!r || r.status !== "done") {
+    if (Date.now() - t0 > 20000) {
+      clearInterval(poll);
+      check("اكتمل الفحص خلال المهلة", "done", r ? r.status : "(لا نتيجة)");
+      finish();
+    }
+    return;
+  }
+  clearInterval(poll);
+
+  // أول تحديث حالته «جارٍ» — يجب أن يحمل نبضًا
+  var firstRunning = null;
+  for (var i = 0; i < window.__writes.length; i++) {
+    var w = window.__writes[i].cml_scan_result;
+    if (w && w.status === "running") { firstRunning = w; break; }
+  }
+  check("★ إشعار استلام فوري عند وصول الطلب (لا صمت)", "true", ackMs !== null);
+  check("★ أول تحديث «جارٍ» يحمل نبض at", "true", !!(firstRunning && firstRunning.at));
+  check("كل تحديثات «جارٍ» تحمل نبضًا", "0", window.__writes.filter(function (w) {
+    var x = w.cml_scan_result; return x && x.status === "running" && !x.at;
+  }).length);
+
+  // الحجز: كُتب عند البدء، وجُدّد أثناء الزحف (أكثر من كتابة واحدة)
+  var claimWrites = window.__writes.filter(function (w) {
+    return Object.prototype.hasOwnProperty.call(w, "cml_scan_claim") && w.cml_scan_claim;
+  });
+  check("★ طابع الحجز يُجدَّد أثناء الزحف (>1 كتابة)", "true", claimWrites.length > 1);
+
+  // الحجز يُحرَّر عند الانتهاء
+  check("الحجز محرَّر بعد الانتهاء", "true", !window.__store.cml_scan_claim);
+  finish();
+}, 250);
+
+function finish() {
+  document.title = "scanlock " + pass + "/" + total;
+  var h = document.createElement("p");
+  h.className = pass === total ? "ok" : "bad";
+  h.textContent = "SCANLOCK: " + pass + "/" + total + (pass === total ? " — all pass" : " — FAIL");
+  document.body.appendChild(h);
+}
+</script>

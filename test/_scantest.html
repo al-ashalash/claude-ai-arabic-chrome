@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>scan test</title>
+  <style>body{font-family:"Segoe UI",Tahoma,sans-serif;padding:24px;background:#faf9f7}
+    pre{background:#fff;border:1px solid #e3e1dc;border-radius:8px;padding:12px;white-space:pre-wrap}
+    b{color:#1f7a64}</style>
+</head>
+<body>
+  <h1>site-update scan test</h1>
+  <p>يحاكي بنية claude.ai: ملف دخول يشير إلى ملفات أعمق (٣ مستويات) — فالزحف يجب أن يكون تعاوديًّا.</p>
+  <div id="out">…</div>
+  <pre id="log"></pre>
+
+  <!-- الملف الوحيد المعروف مسبقًا؛ الباقي يُكتشف بقراءة محتواه -->
+  <script src="assets/v1/index-abc123def.js"></script>
+
+  <script>
+    // قشرة chrome.storage تُشغّل الفحص وتلتقط نتيجته
+    window.__store = {};
+    window.__listeners = [];
+    window.chrome = {
+      storage: {
+        local: {
+          get: function (keys, cb) { cb(Object.assign({}, window.__store)); },
+          set: function (obj, cb) {
+            var ch = {};
+            for (var k in obj) { ch[k] = { newValue: obj[k] }; window.__store[k] = obj[k]; }
+            window.__listeners.forEach(function (fn) { try { fn(ch, "local"); } catch (e) {} });
+            if (cb) cb();
+          },
+        },
+        onChanged: { addListener: function (fn) { window.__listeners.push(fn); } },
+      },
+    };
+  </script>
+  <script src="../extension/dictionary.js"></script>
+  <script src="../extension/engine.js"></script>
+  <script>
+    // اطلب الفحص كما تفعل صفحة الإعدادات
+    setTimeout(function () { chrome.storage.local.set({ cml_scan_request: Date.now() }); }, 400);
+
+    var t0 = Date.now();
+    var poll = setInterval(function () {
+      var r = window.__store.cml_scan_result;
+      document.getElementById('log').textContent = JSON.stringify(r, null, 1);
+      if (!r || r.status !== 'done') {
+        if (Date.now() - t0 > 15000) { clearInterval(poll); document.title = 'scan TIMEOUT'; }
+        return;
+      }
+      clearInterval(poll);
+
+      var list = r.list || [], vars = r.varList || [];
+      var pass = 0, fails = [];
+      var check = function (ok, msg) { if (ok) pass++; else fails.push(msg); };
+
+      // نصوص ثابتة غير مترجمة على ثلاثة مستويات عمق → يجب أن تظهر في list
+      ['Zzq scan entry label', 'Zzq deep settings label', 'Zzq deepest panel label', 'Zzq modal label']
+        .forEach(function (w) { check(list.indexOf(w) >= 0, 'missed: ' + w); });
+
+      // مترجمة في القاموس → يجب ألّا تظهر
+      ['New chat', 'Settings', 'Send', 'Cancel']
+        .forEach(function (w) { check(list.indexOf(w) < 0, 'should be filtered (translated): ' + w); });
+
+      // التصنيف الذكي: نصّ فيه متغيّر يذهب إلى varList لا list
+      check(vars.indexOf('Zzq delete {count} items now') >= 0, 'variable string not in varList');
+      check(list.indexOf('Zzq delete {count} items now') < 0, 'variable string leaked into plain list');
+
+      // ICU والوسوم تُستبعد تمامًا (لا تصلح لتوليد قاعدة آليًّا)
+      var all = list.concat(vars).join('|');
+      check(all.indexOf('plural') < 0, 'ICU string not excluded');
+      check(all.indexOf('<link>') < 0, 'tagged string not excluded');
+
+      // ★★ النصوص المُرمَّزة: كانت الشيفرة ترميها كلها (نحو سُدس نصوص الواجهة الحقيقية).
+      // يجب أن تُفكّ فتظهر بمحارفها الحقيقية لا بهروبها.
+      check(list.indexOf('Zzq typographic apostrophe: couldn’t load') >= 0,
+        'escaped \\u2019 not decoded (كانت العلة الكبرى: رمي كل نصّ فيه \\u)');
+      check(list.indexOf('Zzq em dash — and ellipsis…') >= 0, 'escaped \\u2014/\\u2026 not decoded');
+      check(list.indexOf('Zzq café and 2× usage') >= 0, 'terser \\xNN not decoded');
+      // محرف تحكّم بعد الفكّ ⇒ يُستبعد (الفكّ صار يقبله فوجب رفضه صراحة)
+      check(!all.split('|').some(function (x) { return x.indexOf('Zzq control') === 0; }),
+        'control character not rejected after decoding');
+      // ولا يظهر الهروب نصًّا خامًا في أي نتيجة
+      check(all.indexOf('\\u2019') < 0 && all.indexOf('\\xe9') < 0, 'raw escape leaked into results');
+
+      var total = 17;
+      document.getElementById('out').innerHTML =
+        '<b>SCAN: ' + pass + '/' + total + (fails.length ? ' — FAIL: ' + fails.join(' ; ') : ' — all pass') + '</b>' +
+        '<br>files crawled: ' + r.fetched + ' | strings found: ' + r.found +
+        '<br>plain: ' + list.length + ' | with variables: ' + vars.length;
+      document.title = 'scan ' + pass + '/' + total;
+    }, 300);
+  </script>
+</body>
+</html>

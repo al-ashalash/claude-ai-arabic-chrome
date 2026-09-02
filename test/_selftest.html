@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>claude-mutarjim self test</title>
+  <link rel="stylesheet" href="../extension/base.css">
+  <style>
+    body { font-family: "Segoe UI", Tahoma, sans-serif; padding: 24px; background:#faf9f7; color:#1a1a19; }
+    .sidebar { border:1px solid #e3e1dc; border-radius:10px; padding:14px; max-width:360px; }
+    .item { padding:8px 6px; border-bottom:1px solid #efeee9; }
+    button { padding:8px 12px; border-radius:8px; border:1px solid #c96442; background:#c96442; color:#fff; cursor:pointer; }
+    input { padding:8px; border:1px solid #e3e1dc; border-radius:8px; width:100%; margin-top:8px; }
+    h1 { font-size:20px; }
+    .tag{font-size:12px;color:#6b6b68}
+  </style>
+</head>
+<body>
+  <h1>How can I help you today?</h1>
+  <div class="sidebar">
+    <div class="item"><button>New chat</button></div>
+    <div class="item">Projects</div>
+    <div class="item" id="recentsItem">Recents</div>
+    <div class="item">Settings</div>
+    <div class="item">Help &amp; support</div>
+    <div class="item" id="count">3 chats</div>
+    <input placeholder="Search" aria-label="Search">
+    <div class="item"><button aria-label="Send" title="Send">Send</button></div>
+  </div>
+  <p class="tag">dynamic node test appears below after 800ms:</p>
+  <div id="late"></div>
+
+  <h2 style="font-size:16px;margin-top:24px">pattern &amp; plural tests</h2>
+  <div class="sidebar" id="pat">
+    <div class="item" data-expect="مرحبًا يا عبدالسلام">Hey there, عبدالسلام</div>
+    <div class="item" data-expect="صباح الخير يا سارة">Good morning, سارة</div>
+    <div class="item" data-expect="21 يوليو 2026، 2:23 مساءً">Jul 21, 2026, 2:23 PM</div>
+    <div class="item" data-expect="5 أغسطس 2026">Aug 5, 2026</div>
+    <div class="item" data-expect="23 يوليو">Jul 23</div>
+    <div class="item" data-expect="قبل 3 أيام">3 days ago</div>
+    <div class="item" data-expect="قبل ساعة">1 hour ago</div>
+    <div class="item" data-expect="قبل 15 دقيقة">15 minutes ago</div>
+    <div class="item" data-expect="استخدام مضاعف ×2 حتى 5 أغسطس">2× more usage until August 5</div>
+    <div class="item" data-expect="الرسالة 1 من 2">Message 1 of 2</div>
+    <div class="item" data-expect="عرض 1–10 من 12">Showing 1–10 of 12</div>
+    <div class="item" data-expect="النموذج: Fable 5 Max">Model: Fable 5 Max</div>
+    <div class="item" data-expect="استُخدم 21٪">used 21%</div>
+    <div class="item" data-expect="يتجدد بعد 3 ساعات">Resets in 3 hrs</div>
+    <div class="item" data-expect="خيارات إضافية لـ«خطة البحث»" aria-label="More options for خطة البحث">aria-label pattern test</div>
+    <div class="item" data-expect="بريدة، منطقة القصيم، السعودية">Buraydah, Al-Qassim Region, SA</div>
+    <div class="item" data-expect="Zurich، منطقة Zurich، CH">Zurich, Zurich Region, CH</div>
+    <div class="item" data-expect="Electron على ويندوز · الرياض">Electron on Windows · الرياض</div>
+    <div class="item" data-expect="Ctrl+B">Ctrl+B</div>
+    <div class="item" data-expect="سياسة الاستخدام">Usage Policy</div>
+    <div class="item" data-expect="Chrome (ويندوز)">Chrome (Windows)</div>
+  </div>
+  <div id="patResult" style="margin-top:12px;font-weight:bold"></div>
+
+  <h2 style="font-size:16px;margin-top:24px">smart-rule tests (patterns generated from imports)</h2>
+  <div class="sidebar" id="rules">
+    <div class="item" data-expect="حذف 5 محادثات؟">Delete 5 chats?</div>
+    <div class="item" data-expect="حذف 1 محادثات؟">Delete 1 chats?</div>
+    <!-- القيم الملتقطة تُمرَّر كما هي عمدًا: هي محتوى متغيّر (اسم ملف/مجلد) لا نصّ واجهة -->
+    <div class="item" data-expect="نُقل «report» إلى «Archive»">Moved report to Archive folder</div>
+    <!-- لا قاعدة تطابقه: يثبت أن الأنماط لا تبتلع نصًّا عشوائيًّا -->
+    <div class="item" data-expect="Zzq unsafe rule must not apply">Zzq unsafe rule must not apply</div>
+  </div>
+  <div id="ruleResult" style="margin-top:12px;font-weight:bold"></div>
+
+  <script>
+    // قشرة تخزين كاملة: تخزّن وتُبلّغ المستمعين كما يفعل كروم — لاختبار السلوك الحي.
+    // ملاحظة: لا يوجد أي مفتاح رصد — أُزيلت الميزة في 1.0.20.
+    window.__store = { cml_purge_probe: 1, cml_collect: true, cml_collected: { "old": 1 } };
+    window.__removed = [];
+    window.__listeners = [];
+    window.chrome = {
+      storage: {
+        local: {
+          get: function (keys, cb) {
+            var out = {};
+            (Array.isArray(keys) ? keys : [keys]).forEach(function (k) { if (k in window.__store) out[k] = window.__store[k]; });
+            cb(out);
+          },
+          set: function (obj, cb) {
+            var ch = {};
+            for (var k in obj) { ch[k] = { newValue: obj[k] }; window.__store[k] = obj[k]; }
+            window.__listeners.forEach(function (fn) { try { fn(ch, "local"); } catch (e) {} });
+            if (cb) cb();
+          },
+          remove: function (keys, cb) {
+            (Array.isArray(keys) ? keys : [keys]).forEach(function (k) { window.__removed.push(k); delete window.__store[k]; });
+            if (cb) cb();
+          },
+        },
+        onChanged: { addListener: function (fn) { window.__listeners.push(fn); } },
+      },
+    };
+    // يحاكي ما يفعله «استيراد الترجمات» من صفحة الإعدادات
+    window.__applyOverrides = function (map) {
+      window.__listeners.forEach(function (fn) { try { fn({ cml_overrides: { newValue: { ar: map } } }, "local"); } catch (e) {} });
+    };
+    window.__applyPatterns = function (arr) {
+      window.__listeners.forEach(function (fn) { try { fn({ cml_user_patterns: { newValue: arr } }, "local"); } catch (e) {} });
+    };
+  </script>
+  <script src="../extension/dictionary.js"></script>
+  <script src="../extension/engine.js"></script>
+  <script>
+    // simulate claude.ai's SPA adding nodes later (tests the MutationObserver)
+    setTimeout(function(){
+      var d=document.createElement('div'); d.className='item'; d.textContent='Log out';
+      document.getElementById('late').appendChild(d);
+    }, 800);
+    // score the pattern tests once the engine has done its first pass
+    setTimeout(function(){
+      var rows = document.querySelectorAll('#pat .item'); var pass = 0, fails = [];
+      rows.forEach(function(r){
+        var got = r.hasAttribute('aria-label') ? r.getAttribute('aria-label') : r.textContent.trim();
+        if (got === r.getAttribute('data-expect')) pass++; else fails.push(got + ' ≠ ' + r.getAttribute('data-expect'));
+      });
+      var el = document.getElementById('patResult');
+      el.textContent = 'PATTERNS: ' + pass + '/' + rows.length + (fails.length ? ' | FAIL: ' + fails.join(' ; ') : ' — all pass');
+
+      // ===== الترقية: بيانات ميزة الرصد المحذوفة يجب أن تُمحى من التخزين =====
+      var mchecks = [
+        { key: 'cml_collect', want: true },    // يجب أن يكون قد حُذف
+        { key: 'cml_collected', want: true },  // يجب أن يكون قد حُذف
+      ];
+      var mpass = 0, mfails = [];
+      mchecks.forEach(function (c) {
+        var removed = window.__removed.indexOf(c.key) >= 0 && !(c.key in window.__store);
+        if (removed === c.want) mpass++;
+        else mfails.push('legacy key not purged: ' + c.key);
+      });
+      var mEl = document.getElementById('ruleResult');
+      var migLine = document.createElement('div');
+      migLine.style.cssText = 'margin-top:8px;font-weight:bold';
+      migLine.textContent = 'PURGE: ' + mpass + '/' + mchecks.length + (mfails.length ? ' | FAIL: ' + mfails.join(' ; ') : ' — all pass');
+      mEl.parentNode.appendChild(migLine);
+
+      var total = pass + mpass, max = rows.length + mchecks.length;
+      document.title = 'selftest ' + total + '/' + max;
+
+      // ===== القواعد الذكية: أنماط وَلّدها الاستيراد من نصوص فيها متغيّرات =====
+      // هذه بالضبط ما تنتجه makePattern في options.js
+      window.__applyPatterns([
+        { en: 'Delete {count} chats?', re: '^Delete (.+?) chats\\?$', ar: 'حذف $1 محادثات؟' },
+        { en: 'Moved {file} to {folder} folder', re: '^Moved (.+?) to (.+?) folder$', ar: 'نُقل «$1» إلى «$2»' }
+      ]);
+
+      setTimeout(function () {
+        var rrows = document.querySelectorAll('#rules .item');
+        var rpass = 0, rfails = [];
+        rrows.forEach(function (r) {
+          var got = r.textContent.trim();
+          if (got === r.getAttribute('data-expect')) rpass++;
+          else rfails.push(got + ' ≠ ' + r.getAttribute('data-expect'));
+        });
+        mEl.textContent = 'RULES: ' + rpass + '/' + rrows.length + (rfails.length ? ' | FAIL: ' + rfails.join(' ; ') : ' — all pass');
+        total += rpass; max += rrows.length;
+        document.title = 'selftest ' + total + '/' + max;
+        runLive();
+      }, 600);
+
+      function runLive() {
+      // ===== المرحلة الحية: تصحيح فوري، تحديث خارجي، ثم تراجع =====
+      window.__applyOverrides({ 'Recents': 'سجلّي' });
+      document.getElementById('count').firstChild.nodeValue = '4 chats';
+
+      setTimeout(function () {
+        var lpass = 0, lfails = [];
+        var check = function (ok, msg) { if (ok) lpass++; else lfails.push(msg); };
+        check(document.getElementById('recentsItem').textContent.trim() === 'سجلّي',
+          'live correction: recentsItem = ' + document.getElementById('recentsItem').textContent.trim());
+        check(document.getElementById('count').textContent.trim() === '4 محادثات',
+          'external update: count = ' + document.getElementById('count').textContent.trim());
+
+        // إزالة التصحيح: يجب أن تعود العقدة لترجمة القاموس («الأحدث») فورًا
+        window.__applyOverrides({});
+        setTimeout(function () {
+          check(document.getElementById('recentsItem').textContent.trim() === 'الأحدث',
+            'live revert: recentsItem = ' + document.getElementById('recentsItem').textContent.trim());
+
+          // ===== إيقاف الترجمة يجب أن يُرجع الإنجليزية بلا تحديث الصفحة =====
+          var fire = function (ch) { window.__listeners.forEach(function (fn) { try { fn(ch, 'local'); } catch (e) {} }); };
+          fire({ cml_enabled: { newValue: false } });
+          setTimeout(function () {
+            check(document.getElementById('recentsItem').textContent.trim() === 'Recents',
+              'disable did not restore English: ' + document.getElementById('recentsItem').textContent.trim());
+            var sendBtn = document.querySelector('button[aria-label]');
+            check(sendBtn.getAttribute('aria-label') === 'Send',
+              'disable did not restore attribute: ' + sendBtn.getAttribute('aria-label'));
+
+            // ===== «إعادة الضبط» تحذف المفاتيح: RTL يجب أن يبقى مفعّلًا (الافتراض) =====
+            fire({ cml_enabled: { newValue: undefined }, cml_rtl: { newValue: undefined }, cml_chatrtl: { newValue: undefined } });
+            setTimeout(function () {
+              check(document.documentElement.getAttribute('dir') === 'rtl',
+                'reset broke RTL: dir=' + document.documentElement.getAttribute('dir'));
+              check(document.getElementById('recentsItem').textContent.trim() === 'الأحدث',
+                'reset did not re-enable translation: ' + document.getElementById('recentsItem').textContent.trim());
+
+              var lEl = document.createElement('div');
+              lEl.style.cssText = 'margin-top:8px;font-weight:bold';
+              lEl.textContent = 'LIVE: ' + lpass + '/7' + (lfails.length ? ' | FAIL: ' + lfails.join(' ; ') : ' — all pass');
+              document.getElementById('ruleResult').parentNode.appendChild(lEl);
+              document.title = 'selftest ' + (total + lpass) + '/' + (max + 7);
+            }, 800);
+          }, 800);
+        }, 1000);
+      }, 1000);
+      }
+    }, 1600);
+  </script>
+</body>
+</html>

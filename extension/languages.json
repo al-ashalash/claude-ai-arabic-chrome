@@ -1,0 +1,11 @@
+{
+  "default": "ar",
+  "languages": [
+    {
+      "code": "ar",
+      "endonym": "العربية",
+      "englishName": "Arabic",
+      "direction": "rtl"
+    }
+  ]
+}

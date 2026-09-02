@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>icon renderer</title>
+<!--
+  مُصدِّر الأيقونة — مصدر الحقيقة لأيقونات الإضافة.
+
+  لماذا في المتصفح لا في Node؟ لأن الأيقونة حرفٌ عربي («ع»)، ورسمُه حسابيًّا بمنحنياتٍ
+  مُقدَّرة يُخرج شكلًا مشوَّهًا لا يشبه الحرف. أما المتصفح فيرسمه بخطٍّ حقيقي فيخرج سليمًا.
+
+  التشغيل: افتح هذا الملف عبر خادم ملفات ثابت، ثم انسخ ‎window.__icons‎ (بيانات PNG
+  بترميز base64 لكل حجم) واكتبها ملفاتٍ — أو شغّل ‎tools/gen-icons.mjs‎ فهو يفعل ذلك آليًّا.
+
+  اللون: طينيّ كلود ‎#D97757‎ — اختاره صاحب المشروع ليدلّ على أن الإضافة **لكلود**.
+  والتمييز محمولٌ على **الحرف** لا اللون: «ع» علامةٌ عربية لا تشبه نجمة كلود الشعاعية
+  في شيء، واسم الإضافة يحمل «(غير رسمي)» صراحةً.
+-->
+<style>
+  body { background:#1a1a1a; color:#eee; font-family:system-ui; padding:24px; }
+  .row { display:flex; gap:24px; align-items:flex-end; margin:20px 0; }
+  .cell { text-align:center; }
+  canvas { image-rendering:pixelated; background:#fff2; border-radius:6px; }
+  .lbl { font-size:12px; color:#aaa; margin-top:6px; }
+  .light { background:#fff; padding:14px; border-radius:10px; display:inline-flex; gap:20px; align-items:flex-end; }
+</style>
+
+<h2>أيقونة الإضافة — معاينة</h2>
+<div class="row" id="dark"></div>
+<div class="light" id="light"></div>
+<p id="status" style="color:#8f8">…</p>
+
+<script>
+const BG   = "#D97757";   // طينيّ كلود
+const FG   = "#FFFFFF";   // الحرف
+const SIZES = [16, 32, 48, 128];
+// مكدّس خطوط عربية: أوّل متوفّرٍ يُستعمل. Dubai وSegoe UI أنظفُ شكلًا للحرف المفرد.
+const FONT_STACK = '"Dubai","Segoe UI","Tahoma","Arial","Noto Naskh Arabic",sans-serif';
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x,     y + h, r);
+  ctx.arcTo(x,     y + h, x,     y,     r);
+  ctx.arcTo(x,     y,     x + w, y,     r);
+  ctx.closePath();
+}
+
+function drawIcon(size) {
+  // نرسم على أربعة أضعاف الحجم ثم نصغّر: تنعيمٌ أفضل بكثير للحواف والحرف
+  const S = size * 4;
+  const big = document.createElement("canvas");
+  big.width = big.height = S;
+  const c = big.getContext("2d");
+
+  // الخلفية المستديرة
+  c.fillStyle = BG;
+  roundRect(c, 0, 0, S, S, S * 0.22);
+  c.fill();
+
+  // الحرف «ع» في الوسط
+  c.fillStyle = FG;
+  c.textAlign = "center";
+  c.textBaseline = "alphabetic";
+  // حجم الخط: نضبطه بقياس الحرف نفسه لا بتقديرٍ ثابت، فالخطوط تختلف
+  let px = S * 0.78;
+  c.font = `600 ${px}px ${FONT_STACK}`;
+  let m = c.measureText("ع");
+  const targetH = S * 0.52;                       // ارتفاع مرغوب للحرف داخل المربّع
+  const actualH = (m.actualBoundingBoxAscent || px * 0.5) + (m.actualBoundingBoxDescent || 0);
+  px = px * (targetH / actualH);
+  c.font = `600 ${px}px ${FONT_STACK}`;
+  m = c.measureText("ع");
+  const asc = m.actualBoundingBoxAscent || px * 0.5;
+  const desc = m.actualBoundingBoxDescent || 0;
+  // توسيط بصري: مركز الكتلة الفعلية للحرف على مركز المربّع
+  const baseline = S / 2 + (asc - desc) / 2;
+  c.fillText("ع", S / 2, baseline);
+
+  // التصغير إلى الحجم المطلوب
+  const out = document.createElement("canvas");
+  out.width = out.height = size;
+  const o = out.getContext("2d");
+  o.imageSmoothingEnabled = true;
+  o.imageSmoothingQuality = "high";
+  o.drawImage(big, 0, 0, size, size);
+  return out;
+}
+
+const icons = {};
+const dark = document.getElementById("dark"), light = document.getElementById("light");
+for (const s of SIZES) {
+  const cv = drawIcon(s);
+  icons[s] = cv.toDataURL("image/png").split(",")[1];
+  for (const host of [dark, light]) {
+    const cell = document.createElement("div"); cell.className = "cell";
+    const shown = document.createElement("canvas");
+    shown.width = shown.height = s; shown.getContext("2d").drawImage(cv, 0, 0);
+    shown.style.width = shown.style.height = s + "px";
+    const lbl = document.createElement("div"); lbl.className = "lbl"; lbl.textContent = s + "px";
+    if (host === light) lbl.style.color = "#555";
+    cell.appendChild(shown); cell.appendChild(lbl); host.appendChild(cell);
+  }
+}
+window.__icons = icons;
+document.getElementById("status").textContent = "جاهز — " + SIZES.length + " أحجام في window.__icons";
+</script>

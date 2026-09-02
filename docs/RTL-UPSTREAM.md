@@ -1,6 +1,6 @@
 # RTL readiness of claude.ai's shipped CSS: measurements and a migration path
 
-**Audience:** Anthropic front-end engineers.
+**Audience:** anyone working on right-to-left support for claude.ai or for comparable Tailwind-based applications.
 **Source of all facts:** the publicly served CSS bundles of claude.ai, snapshot taken 2026-09-02.
 **Produced by:** the open-source project [claude-ai-arabic-chrome](https://github.com/al-ashalash/claude-ai-arabic-chrome), a Chrome extension that Arabizes the claude.ai interface, with analysis tooling written with Claude Code.
 
@@ -10,7 +10,7 @@
 
 An extension that gives claude.ai an Arabic, right-to-left interface has to solve the same problem a native RTL rollout would: identify every direction-dependent style in the shipped CSS and provide its mirror. We built a parser and generator that does this automatically, and in the process produced a complete, measured inventory of the direction debt in the current bundles. That inventory — and what an automated pass proved is mechanically fixable — seems more useful shared than kept.
 
-The headline is encouraging: the codebase is already mid-migration. Of the 1,718 direction-dependent declarations shipped today, **721 (42%) are already logical properties** (`margin-inline-start`, `border-start-start-radius`, …), the CDS design system already ships `:dir(rtl)` rules and `rtl:` variant utilities that activate the moment `dir="rtl"` is set on the root, and 86% of the remaining physical declarations convert to logical equivalents by mechanical class-level rewriting. Finishing the migration would make native RTL support nearly free.
+The headline is encouraging: the codebase is already mid-migration. Of the 1,718 direction-dependent declarations shipped today, **721 (42%) are already logical properties** (`margin-inline-start`, `border-start-start-radius`, …), the CDS design system already ships `:dir(rtl)` rules and `rtl:` variant utilities that activate the moment `dir="rtl"` is set on the root, and 87% of the remaining physical declarations convert to logical equivalents by mechanical class-level rewriting. Finishing the migration would make native RTL support nearly free.
 
 ## Current state
 

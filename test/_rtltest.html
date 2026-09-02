@@ -218,6 +218,19 @@ check("★ إصلاح نقطي بـ!important يغلب المولَّد", "4px",
 document.documentElement.removeAttribute("data-cml");
 
 // ===== الطبقة ٢/م: دخان الناتج المولَّد الحقيقي =====
+// fetch ممنوعة تحت file:// — فمن فتح الصفحة بالنقر المزدوج كانت تنفجر TypeError
+// وتُحسب إخفاقًا كاذبًا. تحت file:// تُتخطى اختبارات الجلب تصريحًا (بصفّ إرشاد
+// لا بإخفاق)، وتبقى بصمات التغطية وأخطاء الصفحة قابلتين للفحص (سكربتاتها حُمّلت).
+if (location.protocol === "file:") {
+  check("بصمات التغطية بالعدد المتوقع (≥500)", "true", window.CMLRtlCoverage && window.CMLRtlCoverage.keys.length >= 500);
+  var info = document.createElement("p");
+  info.style.cssText = "color:#8a5a2b;font-size:13px";
+  info.textContent = "ℹ فُتحت الصفحة ملفًّا مباشرًا (file://) — تُتخطى اختبارات جلب الملف الحقيقي الثلاثة. " +
+    "للفحص الكامل شغّل: node code/toolchain/serve-tests.mjs ثم افتح http://localhost:8794/code/test/_rtltest.html";
+  document.body.appendChild(info);
+  check("لا أخطاء جافاسكربت في الصفحة", "0", window.__jsErrors);
+  finish();
+} else {
 fetch("../extension/rtl-overrides.css")
   .then(function (r) { return r.text(); })
   .then(function (txt) {
@@ -237,6 +250,7 @@ fetch("../extension/rtl-overrides.css")
     check("جلب rtl-overrides.css عبر الخادم", "نجح", "فشل: " + e);
     finish();
   });
+}
 
 function finish() {
   document.title = "rtltest " + pass + "/" + total;

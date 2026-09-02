@@ -10,7 +10,7 @@ html[data-cml="on"] body {
   font-family: var(--cml-font);
 }
 
-/* Slightly roomier line-height improves Arabic/Persian/Urdu legibility. */
+/* تباعُد أسطرٍ أرحب يحسّن مقروئية نصوص اللغات ذات الاتجاه من اليمين إلى اليسار. */
 html[data-cml="on"][dir="rtl"] body {
   line-height: 1.7;
 }

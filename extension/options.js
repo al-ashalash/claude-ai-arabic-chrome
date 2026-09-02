@@ -8,6 +8,15 @@
   var LANG = "ar"; // Arabic-only build
   var KEYS = CMLConst.RESET_KEYS;
 
+  // ★ حالة التنسيق العابرة في storage.session (تُمحى بإغلاق المتصفح — لا حجز خالد).
+  // هذه الصفحة سياقٌ موثوق، فهي التي تفتح session لسكربتات المحتوى قبل أول طلب فحص.
+  // القشرة تسقط إلى local حيث لا session (قشور الاختبار) بسلوك الأمس نفسه.
+  var SESS = (chrome.storage && chrome.storage.session) || chrome.storage.local;
+  try {
+    if (chrome.storage.session && chrome.storage.session.setAccessLevel)
+      chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" });
+  } catch (e) {}
+
   function get(keys, cb) { chrome.storage.local.get(keys, cb); }
   // تمرير خطأ الكتابة إلى النداء: التخزين له سقف، وامتلاؤه يُفشل الكتابة بصمت — فكان
   // المستخدم يرى «تم الاستيراد ✓» ولم يُحفظ شيء. النداء يستقبل الخطأ إن وقع.
@@ -638,7 +647,7 @@
   function startScan() {
     // لا نمسح حجزًا حيًّا: مسحُه يُسقط زاحفًا يعمل الآن ويسمح بزاحفٍ ثانٍ يوازيه.
     // الحجز الأقدم من 90 ثانية متروك (نفس عتبة claimScan في المحرّك) فيُمسح.
-    get(["cml_scan_claim"], function (s) {
+    SESS.get(["cml_scan_claim"], function (s) {
       var c = s.cml_scan_claim;
       if (c && c.id && c.at && Date.now() - c.at < CMLConst.CLAIM_STALE_MS) {
         $("scanStatus").textContent = "يوجد فحص جارٍ بالفعل في تبويب آخر — انتظر انتهاءه أو أوقفه.";
@@ -649,7 +658,8 @@
       $("startScan").disabled = true;
       $("cancelScan").classList.remove("hidden");
       $("scanStatus").textContent = "أُرسل الطلب… تأكد أن تبويب claude.ai مفتوح.";
-      set({ cml_scan_result: null, cml_scan_cancel: null, cml_scan_claim: null, cml_scan_request: Date.now() });
+      set({ cml_scan_result: null });
+      try { SESS.set({ cml_scan_cancel: null, cml_scan_claim: null, cml_scan_request: Date.now() }); } catch (e) {}
       scanWaited = 0;
       if (scanTimer) clearInterval(scanTimer);
       scanTimer = setInterval(pollScan, 1000);
@@ -657,7 +667,7 @@
   }
 
   function stopScan() {
-    set({ cml_scan_cancel: Date.now() });
+    try { SESS.set({ cml_scan_cancel: Date.now() }); } catch (e) {}
     $("scanStatus").textContent = "يجري الإيقاف…";
     // مخرج مضمون: لو لم يكن ثمة زاحفٌ حيّ يستجيب (أُغلق تبويبه) بقيت الصفحة عالقة على
     // «يجري الإيقاف…» بلا نهاية. فبعد ثانيتين ننظّف الحالة بأنفسنا ونحرّر الحجز.
@@ -665,7 +675,8 @@
       get(["cml_scan_result"], function (s) {
         var r = s.cml_scan_result;
         if (r && r.status !== "running") return;      // استجاب الزاحف فعلًا
-        set({ cml_scan_result: null, cml_scan_claim: null }, function () {
+        set({ cml_scan_result: null }, function () {
+          try { SESS.set({ cml_scan_claim: null }); } catch (e) {}
           if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
           $("startScan").disabled = false;
           $("cancelScan").classList.add("hidden");

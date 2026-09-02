@@ -20,6 +20,13 @@
   var CONST = globalThis.CMLConst, SHARED = globalThis.CMLShared;
   if (!CONST || !SHARED) { console.error("[تعريب كلود] cml-const/cml-shared لم يُحمَّلا — راجع ترتيب المانيفست"); return; }
 
+  // ★ حالة التنسيق العابرة (طلب/إلغاء/حجز الفحص) في storage.session: تُمحى بإغلاق
+  // المتصفح، فيستحيل بنيويًا «حجزٌ خالد» أو «إلغاء عالق» يسبق صاحبه إلى الأبد —
+  // وهو صنف العلل الذي طاردناه رقعةً رقعة في §7ب. النتيجة النهائية تبقى في local
+  // (المستخدم يتوقع بقاءها بعد إعادة التشغيل، وتعافي «جارٍ» المتقادمة قائم بالنبض).
+  // القشرة تسقط إلى local حيث لا session (قشور الاختبار، ومتصفح أقدم) بسلوك الأمس نفسه.
+  var SESS = (chrome.storage && chrome.storage.session) || chrome.storage.local;
+
   var state = {
     enabled: true,
     lang: L10N.default || (L10N.langs && L10N.langs[0] && L10N.langs[0].code),
@@ -38,7 +45,10 @@
     active = {
       dir: base.dir || "ltr",
       font: base.font || "",
-      strings: Object.assign({}, base.strings, ov),
+      // ★ لا نسخة ثانية: Object.assign على 22 ألف مدخلة كان يضاعف ذاكرة كل تبويب
+      // (~10MB) في كل compile — والبحث يفحص التصحيحات ثم القاموس تتابعًا بلا دمج.
+      strings: base.strings,
+      overrides: ov,
       plurals: base.plurals || {},
       // أنماط المستخدم أولًا: تصحيحه يسبق النمط المدمج عند التعارض
       patterns: (state.userPatterns || []).concat(base.patterns || []),
@@ -95,10 +105,27 @@
   }
 
   // ---------- plurals ----------
+  // Intl.PluralRules (منصة Baseline منذ 2019) بدل الصيغ اليدوية: تُحمَل قواعد CLDR
+  // محدَّثةً لكل لغة، فإضافة لغةٍ جديدة لا تستلزم كتابة قواعد جمعها في المحرك —
+  // والمشروع مفتوح ليضيف آخرون لغات. الخريطة أدناه **صريحة** لأن ترتيبها هو عقدُ
+  // مصفوفات forms في القاموس (فئة غير مذكورة تسقط إلى «other» — سلوك اللغات ناقصة
+  // الصيغ نفسه الذي كان قبلُ: العبرية بثلاث صيغ تعامل many كـother).
+  var PLURAL_FORMS = {
+    ar: ["zero", "one", "two", "few", "many", "other"],
+    he: ["one", "two", "other"],
+    default: ["one", "other"],
+  };
+  var prCache = {};
   function pluralIndex(lang, n) {
-    if (lang === "ar") return n === 0 ? 0 : n === 1 ? 1 : n === 2 ? 2 : (n % 100 >= 3 && n % 100 <= 10) ? 3 : (n % 100 >= 11) ? 4 : 5;
-    if (lang === "he") return n === 1 ? 0 : n === 2 ? 1 : 2;
-    return n === 1 ? 0 : 1;
+    var order = PLURAL_FORMS[lang] || PLURAL_FORMS.default;
+    var cat;
+    try {
+      var pr = prCache[lang] || (prCache[lang] = new Intl.PluralRules(lang));
+      cat = pr.select(n);
+    } catch (e) { cat = n === 1 ? "one" : "other"; } // لغة لا يعرفها المتصفح
+    var i = order.indexOf(cat);
+    if (i < 0) i = order.indexOf("other");
+    return i < 0 ? order.length - 1 : i;
   }
   function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
   function buildPlurals() {
@@ -109,7 +136,7 @@
       var forms = spec.forms || [];
       [eng, spec.plural].forEach(function (pat) {
         if (!pat) return;
-        try { pluralRes.push({ re: new RegExp("^" + esc(pat).replace("%d", "(\\d+)") + "$"), forms: forms }); } catch (e) {}
+        try { pluralRes.push({ re: new RegExp("^" + esc(pat).replace("%d", "(\\d+)") + "$"), forms: forms }); } catch (e) { badPlurals++; }
       });
     }
   }
@@ -211,7 +238,8 @@
       var hit = lookupCache.get(key);
       if (hit !== undefined) return hit;
     }
-    var v = active.strings[key];
+    var v = active.overrides[key];
+    if (v === undefined) v = active.strings[key];
     if (v === undefined) { var pl = tryPlural(key); if (pl !== null) v = pl; }
     if (v === undefined) { var pt = tryPatterns(key); if (pt !== null) v = pt; }
     var out = v === undefined ? null : v;
@@ -456,16 +484,16 @@
   function claimScan(cb) {
     if (window.top !== window) return cb(false); // الإطارات الداخلية لا تزحف أصلًا
     try {
-      chrome.storage.local.get(["cml_scan_claim"], function (s) {
+      SESS.get(["cml_scan_claim"], function (s) {
         var c = s.cml_scan_claim;
         // حجز قديم (>90 ثانية) يُعدّ متروكًا — تبويب أُغلق في منتصف فحصه
         if (c && c.id && c.at && Date.now() - c.at < CONST.CLAIM_STALE_MS) return cb(false);
-        chrome.storage.local.set({ cml_scan_claim: { id: SCAN_ID, at: Date.now() } }, function () {
+        SESS.set({ cml_scan_claim: { id: SCAN_ID, at: Date.now() } }, function () {
           // تأخير عشوائي قصير قبل التحقق: «اكتب ثم اقرأ» ليست عملية ذرّية، وتبويبان
           // أيقظهما البثّ نفسه قد تتداخل كتاباتهما فيرى كلٌّ هويته ويفوزان معًا. المهلة
           // تجعل آخر كاتب هو الفائز الوحيد، ويكمّلها فحص الملكية الدوري في step().
           setTimeout(function () {
-            chrome.storage.local.get(["cml_scan_claim"], function (s2) {
+            SESS.get(["cml_scan_claim"], function (s2) {
               cb(!!(s2.cml_scan_claim && s2.cml_scan_claim.id === SCAN_ID));
             });
           }, 120 + Math.floor(Math.random() * 180));
@@ -473,15 +501,15 @@
       });
     } catch (e) { cb(false); } // تعطّل التخزين ⇒ لا حجز ⇒ لا زحف يتيم بلا تنسيق
   }
-  function releaseScan() { try { chrome.storage.local.set({ cml_scan_claim: null }); } catch (e) {} }
+  function releaseScan() { try { SESS.set({ cml_scan_claim: null }); } catch (e) {} }
   // تجديد طابع الحجز أثناء الزحف: عتبة «المتروك» تسعون ثانية، والزحف الكامل يتجاوزها
   // بكثير — فبلا تجديد يصير الزاحفُ الحيّ متروكًا في نظر بقية التبويبات وصفحة الإعدادات.
-  function touchClaim() { try { chrome.storage.local.set({ cml_scan_claim: { id: SCAN_ID, at: Date.now() } }); } catch (e) {} }
+  function touchClaim() { try { SESS.set({ cml_scan_claim: { id: SCAN_ID, at: Date.now() } }); } catch (e) {} }
   // الحجز قد يُمسح من صفحة الإعدادات (بدء فحص جديد) أو يفوز به غيرنا رغم التحقق أعلاه.
   // فحصٌ دوري رخيص يجعل الزاحف الخاسر ينسحب بدل أن يزحف زحفًا موازيًا كاملًا.
   function stillOurs(cb) {
     try {
-      chrome.storage.local.get(["cml_scan_claim"], function (s) {
+      SESS.get(["cml_scan_claim"], function (s) {
         cb(!!(s.cml_scan_claim && s.cml_scan_claim.id === SCAN_ID));
       });
     } catch (e) { cb(true); }
@@ -625,6 +653,13 @@
         mc.port1.onmessage = function () { var f = mcQueue.shift(); if (f) f(); };
       } catch (e) { mc = null; }
       var yieldTo = function (fn) {
+        // scheduler.yield (كروم 129+): مهامه لا تُخنق في التبويب المخفي — كالحيلة أدناه
+        // تماماً بحسب وثيقة مجدول Blink، لكنه ليس Baseline (لا Safari) والسلوك موثَّق لا
+        // مضمونٌ بمواصفة — فمسار MessageChannel يبقى احتياطاً شرطاً لا ترفاً.
+        if (typeof scheduler !== "undefined" && typeof scheduler.yield === "function") {
+          scheduler.yield().then(fn, function () { setTimeout(fn, 0); });
+          return;
+        }
         if (document.hidden && mc) { mcQueue.push(fn); mc.port2.postMessage(0); return; }
         if (window.requestIdleCallback) { window.requestIdleCallback(fn, { timeout: 200 }); return; }
         setTimeout(fn, 0);
@@ -691,7 +726,7 @@
         // تصنيف ذكي: نص ثابت (مطابقة حرفية) مقابل نص فيه متغيّرات (يصير نمطًا)
         var plain = [], vars = [];
         for (var s in msgs) {
-          if (active.strings[s] !== undefined) continue;
+          if (active.strings[s] !== undefined || active.overrides[s] !== undefined) continue;
           if (tryPlural(s) !== null) continue;
           if (tryPatterns(s) !== null) continue;
           if (/\{[A-Za-z_$][\w$]*\}/.test(s)) vars.push(s); else plain.push(s);
@@ -776,6 +811,13 @@
   }
   try {
     chrome.storage.onChanged.addListener(function (ch, area) {
+      // مفاتيح التنسيق (طلب/إلغاء الفحص) تصل على مساحة session — أو على local حيث
+      // تسقط القشرة إليها. الإعدادات الدائمة على local وحدها.
+      var scanArea = (SESS === chrome.storage.local) ? "local" : "session";
+      if (area === scanArea) {
+        if (ch.cml_scan_request && ch.cml_scan_request.newValue) runScan(); // طلب فحص من صفحة الإعدادات
+        if (ch.cml_scan_cancel && ch.cml_scan_cancel.newValue) cancelScan = true;
+      }
       if (area !== "local") return;
       var relevant = false;
       if (ch.cml_lang) { state.lang = ch.cml_lang.newValue || L10N.default; relevant = true; }
@@ -787,8 +829,6 @@
       // انقلبت الصفحة المفتوحة إلى LTR بينما الإعدادات تعرضها مفعّلة.
       if (ch.cml_rtl) { state.rtl = ch.cml_rtl.newValue !== false; relevant = true; }
       if (ch.cml_chatrtl) { state.chatrtl = ch.cml_chatrtl.newValue !== false; relevant = true; }
-      if (ch.cml_scan_request && ch.cml_scan_request.newValue) runScan(); // طلب فحص من صفحة الإعدادات
-      if (ch.cml_scan_cancel && ch.cml_scan_cancel.newValue) cancelScan = true;
       if (relevant) { compile(); fullPass(); }
     });
   } catch (e) {}

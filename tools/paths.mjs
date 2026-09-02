@@ -2,7 +2,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, "..");
+// ROOT مُصدَّر: serve-tests.mjs يستورده جذرًا للخدمة (بلا تصديرٍ كان ينهار)
+export const ROOT = path.resolve(HERE, "..");
 export const EXT = path.join(ROOT, "extension");
 export const DICTS = path.join(ROOT, "dictionaries");
 export const GLOSSARY = path.join(ROOT, "glossary");

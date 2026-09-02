@@ -362,8 +362,24 @@ function finish() {
   document.body.appendChild(h);
 }
 
+// fetch ممنوعة تحت file:// — فمن فتح الصفحة بالنقر المزدوج أخفقت زحوف الطبقة ب
+// إخفاقًا كاذبًا (ملفات التجربة لا تُجلب فلا «عثور» ولا «تقدّم» يشعل خطاف ١٣ —
+// خمسة إخفاقات بالضبط: 34/39). الطبقة أ (المحكّم) لا تحتاج شبكة فتجري كاملة،
+// والطبقة ب تُتخطى تصريحًا بصفّ إرشاد — والعقد قائم: يتساوى الطرفان عند نجاح الكل.
+// ‏?nofetch يفرض المسار نفسه عبر الخادم — ليبقى مسار التخطي نفسُه مُختبَرًا.
+var FILE_MODE = location.protocol === "file:" || /\bnofetch\b/.test(location.search);
+
 // الترتيب مقصود (١٠ ثم ١١ ثم ١٢ ثم ١٣): كل اختبار يصفّر المخازن ويرث محرّكًا خاملًا
 setTimeout(function () {
+  if (FILE_MODE) {
+    var info = document.createElement("p");
+    info.style.cssText = "color:#8a5a2b;font-size:13px";
+    info.textContent = "ℹ فُتحت الصفحة ملفًّا مباشرًا (file://) — تُتخطى اختبارات المحرّك الأربعة (تحتاج جلب ملفات التجربة عبر الشبكة). " +
+      "للفحص الكامل شغّل: node code/toolchain/serve-tests.mjs ثم افتح http://localhost:8794/code/test/_swtest.html";
+    document.body.appendChild(info);
+    finish();
+    return;
+  }
   test10(function () { test11(function () { test12(function () { test13(finish); }); }); });
 }, 50);
 </script>

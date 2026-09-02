@@ -97,6 +97,8 @@ if (fs.existsSync(readme)) {
        .replace(/web\/user\/dictionaries/g, "dictionaries")
        .replace(/web\/code\/toolchain/g, "tools")
        .replace(/web\/code\/test/g, "test")
+       // رابط الخادم في تعليمة الاختبارات: جذر النشر يخدم test/ مباشرة لا code/test/
+       .replace(/8794\/code\/test/g, "8794/test")
        .replace(/web\/PRIVACY\.md/g, "PRIVACY.md")
        // شجرة البنية في README تصف مجلد العمل — تُستبدل بشجرة المستودع
        .replace(/```\nweb\/\n[\s\S]*?\n```/, "```\nextension/      الإضافة الجاهزة (حمّلها غير محزومة)\ndictionaries/   ★ القاموس المصدر — المصدر الوحيد للحقيقة\ntools/          أدوات البناء (Node خالص، بلا npm)\ntest/           الاختبارات\n```");
@@ -109,7 +111,8 @@ if (fs.existsSync(paths)) {
     `// paths.mjs — مسارات نسخة النشر (البنية سطحية: extension/ و dictionaries/ في الجذر)\n` +
     `import path from "node:path";\nimport { fileURLToPath } from "node:url";\n` +
     `const HERE = path.dirname(fileURLToPath(import.meta.url));\n` +
-    `const ROOT = path.resolve(HERE, "..");\n` +
+    `// ROOT مُصدَّر: serve-tests.mjs يستورده جذرًا للخدمة (بلا تصديرٍ كان ينهار)\n` +
+    `export const ROOT = path.resolve(HERE, "..");\n` +
     `export const EXT = path.join(ROOT, "extension");\n` +
     `export const DICTS = path.join(ROOT, "dictionaries");\n` +
     `export const GLOSSARY = path.join(ROOT, "glossary");\n` +

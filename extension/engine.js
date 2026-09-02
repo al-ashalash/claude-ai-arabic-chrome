@@ -16,6 +16,9 @@
   "use strict";
   var L10N = (typeof globalThis !== "undefined" && globalThis.CLAUDE_L10N) || null;
   if (!L10N || !L10N.dicts) return;
+  // الثوابت والمنطق المشترك يُحقنان قبلنا (ترتيب المانيفست) — غيابهما عطل تركيب صريح
+  var CONST = globalThis.CMLConst, SHARED = globalThis.CMLShared;
+  if (!CONST || !SHARED) { console.error("[تعريب كلود] cml-const/cml-shared لم يُحمَّلا — راجع ترتيب المانيفست"); return; }
 
   var state = {
     enabled: true,
@@ -43,6 +46,17 @@
     buildPlurals();
     buildPatterns();
     lookupCache = new Map(); // النتائج المخزّنة تعتمد على القاموس والقواعد — أبطِلها مع كل إعادة تركيب
+    reportBadRules();
+  }
+
+  function reportBadRules() {
+    var total = badPatterns + badPlurals;
+    if (total === lastBadReport) return;
+    lastBadReport = total;
+    try {
+      if (total) chrome.storage.local.set({ cml_bad_rules: { patterns: badPatterns, plurals: badPlurals } });
+      else chrome.storage.local.remove(CONST.K.BAD_RULES);
+    } catch (e) {}
   }
 
   // قيم الموقع الأصلية تُحفظ مرة واحدة: كان الإطفاء يمحو lang وdir محوًا مطلقًا،
@@ -88,7 +102,7 @@
   }
   function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
   function buildPlurals() {
-    pluralRes = [];
+    pluralRes = []; badPlurals = 0;
     if (!active) return;
     for (var eng in active.plurals) {
       var spec = active.plurals[eng];
@@ -134,13 +148,16 @@
     "Eastern Province": "المنطقة الشرقية", "Northern Borders": "الحدود الشمالية",
   };
   var patRes = null;
+  // القاعدة الفاسدة تُعدّ وتُصرَّح — الابتلاع الصامت يجعل المستخدم يرى قاعدته محفوظةً
+  // في الإعدادات والمحرك لا يطبّقها أبدًا فيظن الإضافة معطلة (قاعدة §7ج: الصمت يُقرأ عطلًا آخر)
+  var badPatterns = 0, badPlurals = 0, lastBadReport = -1;
   function buildPatterns() {
-    patRes = [];
+    patRes = []; badPatterns = 0;
     if (!active || !active.patterns) return;
     for (var i = 0; i < active.patterns.length; i++) {
       var p = active.patterns[i];
       if (!p || !p.re || !p.ar) continue;
-      try { patRes.push({ re: new RegExp(p.re), ar: p.ar }); } catch (e) {}
+      try { patRes.push({ re: new RegExp(p.re), ar: p.ar }); } catch (e) { badPatterns++; }
     }
   }
   function tryPatterns(text) {
@@ -186,7 +203,7 @@
   // الكلفة نفسها بلا فائدة. المفتاح ← الناتج (أو null). تُمسح في compile() لأن تعديل
   // «كلماتك المحفوظة» أو القواعد المستوردة يغيّر النتائج.
   var lookupCache = null;
-  var LOOKUP_CACHE_MAX = 5000;
+  var LOOKUP_CACHE_MAX = CONST.LOOKUP_CACHE_MAX;
 
   // سلسلة البحث الموحّدة: القاموس ← الجموع ← الأنماط. null = لا ترجمة.
   function lookup(key) {
@@ -242,7 +259,7 @@
     var raw = node.nodeValue;
     if (!raw) return;
     var key = raw.trim();
-    if (!key || key.length > 300) return; // allow long UI descriptions (chat text already excluded by inChatContent)
+    if (!key || key.length > CONST.TEXT_MAX) return; // الأوصاف الطويلة مسموحة (نص المحادثة مستثنى أصلاً)
     var v = lookup(key);
     if (v !== null && v !== key) {
       var out = raw.replace(key, function () { return v; });
@@ -273,7 +290,7 @@
         delete rec[a]; // الموقع بدّل السمة — ترجمة عادية من جديد
       }
       var key = val.trim();
-      if (!key || key.length > 300) continue; // السقف نفسه المطبَّق على عقد النص
+      if (!key || key.length > CONST.TEXT_MAX) continue; // السقف نفسه المطبَّق على عقد النص
       var t = lookup(key);
       if (t !== null && t !== key) {
         var out = val.replace(key, function () { return t; });
@@ -344,7 +361,7 @@
   var queued = false;
   var pendAdded = [], pendText = new Set(), pendAttr = new Set();
   var pendOverflow = false;
-  var PEND_MAX = 2000;
+  var PEND_MAX = CONST.PEND_MAX;
   var ric = window.requestIdleCallback ? window.requestIdleCallback.bind(window) : null;
   var schedule = ric ? function (cb) { return ric(cb, { timeout: 500 }); } : function (cb) { return setTimeout(cb, 200); };
   function clearPending() { pendAdded = []; pendText.clear(); pendAttr.clear(); }
@@ -424,22 +441,9 @@
   // ---------- فحص تحديثات الموقع (يُطلب من صفحة الإعدادات عبر مفتاح تخزين) ----------
   // claude.ai مقسّم إلى مئات الملفات تُحمَّل بتسلسل عميق، فالزحف التكراري هو السبيل
   // الوحيد لرؤية كل النصوص. يعمل هنا لأننا داخل الصفحة (نفس الأصل) — بلا صلاحيات إضافية.
-  // ★★ فكُّ حرفيّة جافاسكربت فكًّا حقيقيًّا (المشترك بين الفحص وسكربت الحصاد).
-  // أدوات الحزم ترمّز كل محرف غير ASCII: ’ ← ’ و— ← — و… ← … (وterser
-  // يستعمل \xNN). فبلا فكٍّ حقيقي يكون الفحص أعمى عن فئة محارف كاملة — وهي في نصوص
-  // الواجهة الإنجليزية كثيرةٌ جدًّا (الفاصلة العليا المطبعية وحدها في نحو 12% منها).
+  // فكُّ الحرفيّات صار في cml-shared.js — نسخة واحدة للمحرك وأدوات التوليد (درس §7و)
   var CTRL_RE = new RegExp("[\\u0000-\\u001f\\u007f]");
-  function unescapeLiteral(lit, singleQuoted) {
-    if (lit == null) return null;
-    // (١) \' هروبٌ صحيح في الحرفيّة المفردة ولا يعرفه JSON
-    var t = singleQuoted ? lit.replace(/\\'/g, "'") : lit;
-    // (٢) \xNN هروب جافاسكربت لا يعرفه JSON — حوّله إلى \u00NN (وإلا سقطت é و× و·)
-    t = t.replace(/\\x([0-9a-fA-F]{2})/g, "\\u00$1");
-    // (٣) اهرب علامات الاقتباس المزدوجة العارية. التمريرة **ذرّية**: تبتلع كل هروبٍ
-    // بأكمله أولًا، فلا تُخدع بـ\" ولا بعلامتين متلاصقتين.
-    t = t.replace(/\\[\s\S]|"/g, function (x) { return x === '"' ? '\\"' : x; });
-    try { return JSON.parse('"' + t + '"'); } catch (e) { return null; }
-  }
+  var unescapeLiteral = SHARED.unescapeLiteral;
 
   var scanning = false;
   var cancelScan = false;
@@ -455,7 +459,7 @@
       chrome.storage.local.get(["cml_scan_claim"], function (s) {
         var c = s.cml_scan_claim;
         // حجز قديم (>90 ثانية) يُعدّ متروكًا — تبويب أُغلق في منتصف فحصه
-        if (c && c.id && c.at && Date.now() - c.at < 90000) return cb(false);
+        if (c && c.id && c.at && Date.now() - c.at < CONST.CLAIM_STALE_MS) return cb(false);
         chrome.storage.local.set({ cml_scan_claim: { id: SCAN_ID, at: Date.now() } }, function () {
           // تأخير عشوائي قصير قبل التحقق: «اكتب ثم اقرأ» ليست عملية ذرّية، وتبويبان
           // أيقظهما البثّ نفسه قد تتداخل كتاباتهما فيرى كلٌّ هويته ويفوزان معًا. المهلة
@@ -578,7 +582,7 @@
       // ثلاثين منها في مهمة واحدة تجمّد الواجهة مئات المللي ثانية في كل دفعة —
       // والمستخدم قد يكون يقرأ ردّ كلود في التبويب نفسه. التوازي 6 لا 30 لئلا يزاحم
       // الفحصُ تدفّقَ المحادثة على الاتصال نفسه.
-      var PARALLEL = 6;
+      var PARALLEL = CONST.SCAN_PARALLEL;
       function scanOne(tx) {
         fetched++;
         var refs = tx.match(REF) || [];
@@ -596,7 +600,7 @@
           var s = unescapeLiteral(m[1] != null ? m[1] : m[2], m[1] == null);
           if (s === null) continue;                       // تعذّر الفكّ ⇒ تجاهُل، لا نصّ مشوّه
           s = s.replace(/\s+/g, " ").trim();
-          if (!s || s.length < 2 || s.length > 300) continue;
+          if (!s || s.length < 2 || s.length > CONST.TEXT_MAX) continue;
           if (!/[A-Za-z]/.test(s)) continue;
           if (CTRL_RE.test(s)) continue;                  // محارف تحكّم: صار الفكّ يقبلها
           if (/^[#\/]|^\d|https?:|www\.|[@\\^~`|=]/.test(s) || /^[a-z]+([A-Z][a-z]+)+$/.test(s) || (/_/.test(s) && !/ /.test(s))) continue;
@@ -699,7 +703,7 @@
         // أما العدّ فيبقى صادقاً.
         var missingTotal = plain.length + vars.length;
         var capped = false;
-        var CAP = 4000; // حدّ يحمي مساحة التخزين
+        var CAP = CONST.SCAN_CAP;
         if (missingTotal > CAP) {
           capped = true;
           vars = vars.slice(0, Math.min(vars.length, Math.floor(CAP / 2)));

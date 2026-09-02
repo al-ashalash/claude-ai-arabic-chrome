@@ -21,43 +21,12 @@
   <div id="out" style="font-weight:bold;margin:12px 0"></div>
   <table id="tbl"><thead><tr><th>الحالة</th><th>الإنجليزي</th><th>العربي</th><th>المتوقع</th><th>النتيجة</th></tr></thead><tbody></tbody></table>
 
+<!-- ★ الاختبار يفحص النسخة الحقيقية من cml-shared.js — لا نسخة طبق الأصل.
+     كانت هنا نسخة يدوية انحرفت فعلاً عن الأصل في ترتيب الحُرّاس (متكافئتين سلوكيًا
+     مصادفةً)، فكان الاختبار يفحص دالة غير التي تعمل عند المستخدم. أُميتت عمدًا. -->
+<script src="../extension/cml-shared.js"></script>
 <script>
-// ===== نسخة طبق الأصل من makePattern في options.js =====
-var VAR_RE = /\{([A-Za-z_$][\w$]*)\}/g;
-function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-function makePattern(en, ar) {
-  VAR_RE.lastIndex = 0;
-  var names = [], m;
-  while ((m = VAR_RE.exec(en))) names.push(m[1]);
-  if (!names.length) return null;
-  if (names.length > 3) return null;
-  var literal = en.replace(VAR_RE, "").trim();
-  if (literal.length < 6) return null;
-  if (!/[A-Za-z]{3}/.test(literal)) return null;
-  if (/\}[\s ]*\{/.test(en)) return null;   // متغيّران متلاصقان ⇒ (.+?)(.+?) ⇒ تراجع أسّي
-  if (/\$\d/.test(ar)) return null;         // «$5» في الترجمة يُقرأ مجموعةً ملتقطة فيُفسد الناتج
-  var t = en.trim();
-  var startsVar = /^\{[A-Za-z_$][\w$]*\}/.test(t);
-  var endsVar = /\{[A-Za-z_$][\w$]*\}$/.test(t);
-  if (startsVar && endsVar) return null;
-  VAR_RE.lastIndex = 0;
-  var arNames = [], m2;
-  while ((m2 = VAR_RE.exec(ar))) arNames.push(m2[1]);
-  for (var i = 0; i < arNames.length; i++) if (names.indexOf(arNames[i]) < 0) return null;
-  var re = "^", idx = 0, mm;
-  VAR_RE.lastIndex = 0;
-  while ((mm = VAR_RE.exec(en))) {
-    re += escapeRe(en.slice(idx, mm.index)) + "(.+?)";
-    idx = mm.index + mm[0].length;
-  }
-  re += escapeRe(en.slice(idx)) + "$";
-  var arOut = ar.replace(VAR_RE, function (whole, name) {
-    var pos = names.indexOf(name);
-    return pos < 0 ? whole : "$" + (pos + 1);
-  });
-  try { new RegExp(re); } catch (e) { return null; }
-  return { en: en, re: re, ar: arOut };
-}
+var makePattern = CMLShared.makePattern;
 
 // ===== الحالات =====
 var cases = [

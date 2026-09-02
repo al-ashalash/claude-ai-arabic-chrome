@@ -41,7 +41,9 @@ window.chrome = { storage: {
   onChanged: { addListener: function (fn) { window.__listeners.push(fn); } },
 } };
 </script>
-<script src="../extension/dictionary.js"></script>
+<script src="../extension/cml-const.js"></script>
+  <script src="../extension/cml-shared.js"></script>
+  <script src="../extension/dictionary.js"></script>
 <script src="../extension/engine.js"></script>
 <script>
 var tb = document.querySelector("#tbl tbody"), pass = 0, total = 0;

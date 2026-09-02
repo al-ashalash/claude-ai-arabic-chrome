@@ -6,8 +6,7 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var LANG = "ar"; // Arabic-only build
-  var KEYS = ["cml_enabled", "cml_rtl", "cml_chatrtl", "cml_overrides", "cml_user_patterns",
-    "cml_scan_request", "cml_scan_result", "cml_scan_cancel", "cml_scan_claim"];
+  var KEYS = CMLConst.RESET_KEYS;
 
   function get(keys, cb) { chrome.storage.local.get(keys, cb); }
   // تمرير خطأ الكتابة إلى النداء: التخزين له سقف، وامتلاؤه يُفشل الكتابة بصمت — فكان
@@ -19,9 +18,9 @@
     });
   }
   // سقوف الاستيراد: ملف واحد لا يجوز أن يجمّد الصفحة ولا أن يملأ التخزين.
-  var IMPORT_MAX_BYTES = 5 * 1024 * 1024;
-  var IMPORT_MAX_TERMS = 20000;
-  var IMPORT_MAX_RULES = 2000;
+  var IMPORT_MAX_BYTES = CMLConst.IMPORT_MAX_BYTES;
+  var IMPORT_MAX_TERMS = CMLConst.IMPORT_MAX_TERMS;
+  var IMPORT_MAX_RULES = CMLConst.IMPORT_MAX_RULES;
   // flash يضع علمًا أثناء عرض الرسالة، فلا تدهسها إعادةُ رسمٍ متزامنة (renderScan مثلًا)
   function flash(el, msg) {
     if (!el) return;
@@ -93,8 +92,7 @@
           var idx = -1;
           pats.forEach(function (x, i) { if (x.re === p.re) idx = i; });
           if (idx >= 0) pats[idx] = p; else pats.push(p);
-          var litLen = function (q) { return String(q.en || "").replace(VAR_RE, "").length; };
-          pats.sort(function (a, b) { return litLen(b) - litLen(a); });
+          pats = CMLShared.sortBySpecificity(pats);
           patch.cml_user_patterns = pats;
         } else if (BASE[en] !== undefined && v === BASE[en]) {
           // مطابقة الأصل ⇒ لا داعي لتصحيحٍ يخزَّن ويظهر في قائمتك بلا فائدة
@@ -385,72 +383,11 @@
     return out;
   }
 
-  // ---------- توليد القواعد الذكية من النصوص المتغيّرة ----------
-  // "Delete {count} chats?"  +  "حذف {count} محادثة؟"
-  //   →  { re: "^Delete (.+?) chats\\?$", ar: "حذف $1 محادثة؟" }
-  // فترجمة واحدة تغطي كل القيم بدل أن تبقى كل صياغة غير مترجمة إلى الأبد.
-  var VAR_RE = /\{([A-Za-z_$][\w$]*)\}/g;
-  function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-
-  function makePattern(en, ar) {
-    VAR_RE.lastIndex = 0;
-    var names = [], m;
-    while ((m = VAR_RE.exec(en))) names.push(m[1]);
-    if (!names.length) return null;                       // لا متغيّرات: مدخلة عادية
-    if (names.length > 3) return null;                    // كان 6 — شُدّد لكبح التراجع الأسّي
-
-    // ===== حارس التراجع الأسّي (ReDoS) =====
-    // الخطر الحقيقي متغيّران متلاصقان (أو بينهما بياض فقط): يولّدان "(.+?)(.+?)" وهو
-    // كمّان متداخلان زمنهما أسّي على نصّ طويل لا يطابق — وقاعدةٌ واحدة كهذه تكفي
-    // لتجميد التبويب لأن المحرّك يجرّب كل نمط على كل نصّ. أما فاصلٌ ثابتٌ ولو قصيرًا
-    // («to» مثلًا) فيجعل التراجع كثير الحدود لا أسّيًّا، وسقفُ الثلاثة متغيّرات يحدّه.
-    if (/\}[\s ]*\{/.test(en)) return null;
-
-    // ===== حارس رمز القالب =====
-    // المحرّك يفسّر $1..$9 في الترجمة على أنها مجموعات ملتقطة. فترجمة فيها مبلغ حرفي
-    // مثل «وفّر $20» تُقرأ $2 مجموعةً غير موجودة فتُستبدل بفراغ ويخرج «وفّر 0».
-    if (/\$\d/.test(ar)) return null;
-
-    // ===== حارس الأمان =====
-    // القاعدة الخاطئة أسوأ من غياب الترجمة: نمط فضفاض يبتلع نصوصًا لا علاقة لها
-    // فيعرضها مترجمة خطأً. الفشل الآمن هنا هو الرفض (يبقى النص إنجليزيًّا).
-    var literal = en.replace(VAR_RE, "").trim();
-    if (literal.length < 6) return null;            // ثابت أقصر من أن يميّز
-    if (!/[A-Za-z]{3}/.test(literal)) return null;  // رموز فقط لا كلمات
-    // الأهم: **الموضع** لا الطول. نمط محفوف بمتغيّرين من الطرفين
-    // (^(.+?) X (.+?)$) لا يرتكز على شيء: "{a} of {b}" يطابق "Terms of Service".
-    // فنشترط نصًّا ثابتًا في البداية أو النهاية ليكون للنمط مرساة.
-    var t = en.trim();
-    var startsVar = /^\{[A-Za-z_$][\w$]*\}/.test(t);
-    var endsVar = /\{[A-Za-z_$][\w$]*\}$/.test(t);
-    if (startsVar && endsVar) return null;
-
-    // كل متغيّر في العربية يجب أن يوجد في الإنجليزية (ولا متغيّر مخترع)
-    VAR_RE.lastIndex = 0;
-    var arNames = [], m2;
-    while ((m2 = VAR_RE.exec(ar))) arNames.push(m2[1]);
-    for (var i = 0; i < arNames.length; i++) if (names.indexOf(arNames[i]) < 0) return null;
-
-    // ابنِ التعبير: النصّ الثابت مهروب، وكل متغيّر مجموعة التقاط غير جشعة
-    var re = "^";
-    var idx = 0;
-    VAR_RE.lastIndex = 0;
-    var mm;
-    while ((mm = VAR_RE.exec(en))) {
-      re += escapeRe(en.slice(idx, mm.index)) + "(.+?)";
-      idx = mm.index + mm[0].length;
-    }
-    re += escapeRe(en.slice(idx)) + "$";
-
-    // القالب العربي: {name} ← $n بترتيب ظهوره في الإنجليزية
-    var arOut = ar.replace(VAR_RE, function (whole, name) {
-      var pos = names.indexOf(name);
-      return pos < 0 ? whole : "$" + (pos + 1);
-    });
-
-    try { new RegExp(re); } catch (e) { return null; }
-    return { en: en, re: re, ar: arOut };
-  }
+  // ---------- توليد القواعد الذكية ----------
+  // النسخة الواحدة في cml-shared.js (حُقن قبلنا في options.html) — هنا أسماء محلية فقط.
+  // شرح الحُرّاس كاملًا هناك: ReDoS، ورمز القالب، والمرساة، وسقف المتغيرات.
+  var VAR_RE = CMLShared.VAR_RE;
+  var makePattern = CMLShared.makePattern;
 
   function importTermsFile(file, statusEl) {
     // سقف الحجم قبل القراءة: ملف بمئات الميغابايتات يجمّد التبويب في FileReader نفسه
@@ -497,8 +434,7 @@
 
         // ★ الفرز بالتخصيص: المحرّك يجرّب القواعد بترتيبها، فإن سبق الأعمُّ الأخصَّ ابتلع
         // النصَّ وأخرج ترجمة خاطئة. المعيار طول النصّ الثابت تنازليًّا (فرز JS مستقرّ).
-        var litLen = function (p) { return String(p.en || "").replace(VAR_RE, "").length; };
-        pats.sort(function (a, b) { return litLen(b) - litLen(a); });
+        pats = CMLShared.sortBySpecificity(pats);
 
         var patch = { cml_overrides: o };
         if (nPat) patch.cml_user_patterns = pats;
@@ -612,6 +548,12 @@
       pT.textContent = "؟"; pU.textContent = "؟";
       line.innerHTML = "قاموس الإضافة: <b>" + dictN + "</b> ترجمة. لقياس نسبة التغطية وجلب غير المترجَم، شغّل «تحديث المصدر — فحص الموقع» أدناه.";
     }
+    // القواعد الفاسدة تُصرَّح لا تُبتلع: المحرك يعدّها في compile ويكتبها متى تغيّرت
+    get([CMLConst.K.BAD_RULES], function (b) {
+      var br = b[CMLConst.K.BAD_RULES];
+      var n = br ? (br.patterns || 0) + (br.plurals || 0) : 0;
+      if (n) line.innerHTML += "<br>⚠ <b>" + n + "</b> من قواعدك المحفوظة تالفةٌ لا تُطبَّق — أعد استيرادها، أو احذفها من «تصحيحاتك».";
+    });
   }
 
   function renderScan(r) {
@@ -623,7 +565,7 @@
       // عالقة على «جارٍ الفحص…» أبدًا بلا سبيل استرداد.
       // نتيجة بلا نبض أصلًا = بقايا نسخة أقدم أو فحصٌ مات قبل أول نبضة. عدّها متعثّرة:
       // اشتراطُ وجود النبض كان يترك الزر معطّلًا إلى الأبد فلا يبدأ فحصٌ جديد أبدًا.
-      if (!r.at || Date.now() - r.at > 45000) {
+      if (!r.at || Date.now() - r.at > CMLConst.HEARTBEAT_STALL_MS) {
         cnt.textContent = "انقطع الفحص";
         st.textContent = "توقّف بعد قراءة " + (r.fetched || 0) + " ملفًا — غالبًا أُغلق تبويب claude.ai أو أُعيد تحميل الإضافة. افتح claude.ai وحدّث الصفحة ثم أعد الفحص.";
         $("cancelScan").classList.add("hidden");
@@ -698,7 +640,7 @@
     // الحجز الأقدم من 90 ثانية متروك (نفس عتبة claimScan في المحرّك) فيُمسح.
     get(["cml_scan_claim"], function (s) {
       var c = s.cml_scan_claim;
-      if (c && c.id && c.at && Date.now() - c.at < 90000) {
+      if (c && c.id && c.at && Date.now() - c.at < CMLConst.CLAIM_STALE_MS) {
         $("scanStatus").textContent = "يوجد فحص جارٍ بالفعل في تبويب آخر — انتظر انتهاءه أو أوقفه.";
         $("cancelScan").classList.remove("hidden");
         if (!scanTimer) { scanWaited = 0; scanTimer = setInterval(pollScan, 1000); }

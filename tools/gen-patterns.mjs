@@ -17,33 +17,9 @@ const INPUTS = [
   `${G}/_vars-pairs-20260828.json`,
 ];
 
-const VAR_RE = /\{([A-Za-z_$][\w$]*)\}/g;
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-function makePattern(en, ar) {
-  VAR_RE.lastIndex = 0;
-  const names = []; let m;
-  while ((m = VAR_RE.exec(en))) names.push(m[1]);
-  if (!names.length) return null;
-  if (names.length > 3) return null;
-  const literal = en.replace(VAR_RE, "").trim();
-  if (literal.length < 6) return null;
-  if (!/[A-Za-z]{3}/.test(literal)) return null;
-  if (/\}[\s ]*\{/.test(en)) return null;
-  const t = en.trim();
-  if (/^\{[A-Za-z_$][\w$]*\}/.test(t) && /\{[A-Za-z_$][\w$]*\}$/.test(t)) return null;
-  VAR_RE.lastIndex = 0;
-  const arNames = []; let m2;
-  while ((m2 = VAR_RE.exec(ar))) arNames.push(m2[1]);
-  for (const n of arNames) if (names.indexOf(n) < 0) return null;
-  let re = "^", idx = 0, mm;
-  VAR_RE.lastIndex = 0;
-  while ((mm = VAR_RE.exec(en))) { re += escapeRe(en.slice(idx, mm.index)) + "(.+?)"; idx = mm.index + mm[0].length; }
-  re += escapeRe(en.slice(idx)) + "$";
-  const arOut = ar.replace(VAR_RE, (whole, name) => { const p = names.indexOf(name); return p < 0 ? whole : "$" + (p + 1); });
-  try { new RegExp(re); } catch { return null; }
-  return { en, re, ar: arOut };
-}
+// النسخة الواحدة من makePattern وفرز التخصيص — من cml-shared.js (سكربت ثنائي الاستخدام)
+await import(new URL("../../user/extension/cml-shared.js", import.meta.url).href);
+const { makePattern, sortBySpecificity } = globalThis.CMLShared;
 
 const dict = JSON.parse(fs.readFileSync(AR, "utf8"));
 const dictKeys = Object.keys(dict.strings || {});
@@ -77,11 +53,8 @@ for (const f of INPUTS) {
   }
 }
 
-// ★ الفرز بالتخصيص: المحرّك يأخذ أول نمط يطابق، فإن سبق الأعمُّ الأخصَّ ابتلع النصّ.
-const literalLen = (p) => String(p.en || "").replace(/\{[^{}]*\}/g, "").length;
-const all = (dict.patterns || []).concat(newPats).map((p, i) => ({ p, i }));
-all.sort((a, b) => (literalLen(b.p) - literalLen(a.p)) || (a.i - b.i));
-dict.patterns = all.map((x) => x.p);
+// ★ الفرز بالتخصيص — النسخة المشتركة (الترتيب دلالي: الأخص أولاً)
+dict.patterns = sortBySpecificity((dict.patterns || []).concat(newPats));
 
 fs.writeFileSync(AR, JSON.stringify(dict, null, 2) + "\n", "utf8");
 fs.writeFileSync(`${G}/_patterns-rejected.json`, JSON.stringify(rejects, null, 1), "utf8");

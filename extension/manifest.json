@@ -22,6 +22,8 @@
         "https://*.claude.ai/*"
       ],
       "js": [
+        "cml-const.js",
+        "cml-shared.js",
         "dictionary.js",
         "engine.js"
       ],

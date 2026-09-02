@@ -513,14 +513,106 @@
   // تجديد طابع الحجز أثناء الزحف: عتبة «المتروك» تسعون ثانية، والزحف الكامل يتجاوزها
   // بكثير — فبلا تجديد يصير الزاحفُ الحيّ متروكًا في نظر بقية التبويبات وصفحة الإعدادات.
   function touchClaim() { try { SESS.set({ cml_scan_claim: { id: SCAN_ID, at: Date.now() } }); } catch (e) {} }
-  // الحجز قد يُمسح من صفحة الإعدادات (بدء فحص جديد) أو يفوز به غيرنا رغم التحقق أعلاه.
-  // فحصٌ دوري رخيص يجعل الزاحف الخاسر ينسحب بدل أن يزحف زحفًا موازيًا كاملًا.
-  function stillOurs(cb) {
+  // ---------- تحكيم عامل الخدمة (المرحلة ٤ — الفحص 2.0) ----------
+  // رسالة «طلب منحة» إلى معالجٍ أحاديِّ الخيط: أول طالبٍ يفوز والباقي يُرفض — لا
+  // سباق بنيويًّا، ولا طوابع تقادم: المنحة حياتُها حياةُ منفذها (أُغلق التبويب ⇒
+  // تحررت فورًا، لا انتظار 90ث). حجزُ التخزين القديم يبقى **طبقة سقوط** كاملةً حيث
+  // لا عامل (قشور الاختبار — وبها تبقى اختبارات القفل الثمانية حارسةً لهذا المسار،
+  // أو سياقٌ أبطله تحديث الإضافة، أو عاملٌ متعطل تجاوز مهلته).
+  //
+  // ★ «مقبضٌ» لكل منحة لا حالةٌ مشتركة (درس دحضٍ مؤكد): كان swPort/swMode مفردين
+  // على مستوى الوحدة، فسقوطُ مهلةِ طلبٍ للطبيب يقلب swMode تحت زحف ترجمةٍ حيّ،
+  // وتحريرُ الطبيب يقطع منفذَ الزحف فيُجهضه. الآن يرجع swClaim مقبضًا يملكه طالبُه
+  // وحده — beat/alive/release كلها عليه، ومقبضُ الطبقة القديمة يوحّد الواجهة
+  // (نبضُه هو تجديد الطابع وحياتُه هي مطابقة الهوية) فتختفي كل أوامر «إن كان الوضع».
+  function swClaim(kind, cb, onLost) {
+    var settled = false, timer = null, port = null;
+    function legacyGrant() {
+      return {
+        legacy: true,
+        beat: function () { touchClaim(); },
+        alive: function (acb) {
+          try {
+            SESS.get(["cml_scan_claim"], function (s) {
+              acb(!!(s.cml_scan_claim && s.cml_scan_claim.id === SCAN_ID));
+            });
+          } catch (e) { acb(true); }
+        },
+        release: function () { releaseScan(); },
+      };
+    }
+    function fallback() {
+      if (settled) return;
+      settled = true;
+      try { clearTimeout(timer); } catch (e) {}
+      // اقطع المنفذ إن فُتح: منحةٌ متأخرة على منفذٍ شبح كانت ستحجب بقية التبويبات
+      // حتى يُغلق تبويبُنا — والقطعُ يحرّرها في المحكّم فورًا.
+      if (port) { try { port.disconnect(); } catch (e) {} port = null; }
+      claimScan(function (won) { cb(won, won ? legacyGrant() : null); });
+    }
     try {
-      SESS.get(["cml_scan_claim"], function (s) {
-        cb(!!(s.cml_scan_claim && s.cml_scan_claim.id === SCAN_ID));
+      if (!chrome.runtime || typeof chrome.runtime.connect !== "function") return fallback();
+      port = chrome.runtime.connect({ name: CONST.PORT_CRAWL });
+      timer = setTimeout(fallback, 700); // عاملٌ لا يرد = معطّل ⇒ الطبقة القديمة
+      var handle = null;
+      port.onMessage.addListener(function (m) {
+        if (settled || !m) return;
+        if (m.type === "grant") {
+          settled = true;
+          try { clearTimeout(timer); } catch (e) {}
+          handle = {
+            legacy: false,
+            dead: false,
+            beat: function () { if (!handle.dead) { try { port.postMessage({ type: "beat" }); } catch (e) {} } },
+            alive: function (acb) { acb(!handle.dead); },
+            release: function () {
+              if (handle.dead) return;
+              handle.dead = true;
+              try { port.postMessage({ type: "release" }); } catch (e) {}
+              try { port.disconnect(); } catch (e) {}
+            },
+          };
+          cb(true, handle);
+        } else if (m.type === "deny") {
+          settled = true;
+          try { clearTimeout(timer); } catch (e) {}
+          try { port.disconnect(); } catch (e) {}
+          cb(false, null);
+        }
       });
-    } catch (e) { cb(true); }
+      port.onDisconnect.addListener(function () {
+        if (!settled) { fallback(); return; } // العامل غير متاح أصلًا
+        if (handle && !handle.dead) {
+          // مات العامل أثناء المنحة (نادر): المقبض ميت — صاحبه يقرر الاسترداد
+          handle.dead = true;
+          if (onLost) onLost();
+        }
+      });
+      port.postMessage({ type: "claim", kind: kind });
+    } catch (e) { fallback(); }
+  }
+  // منحتا المسارين — كلٌّ يملك خانته وحده ولا يمسّ الأخرى
+  var scanGrant = null;
+  var rtlGrant = null;
+  function dropScanGrant() { if (scanGrant) { scanGrant.release(); scanGrant = null; } }
+  function dropRtlGrant() { if (rtlGrant) { rtlGrant.release(); rtlGrant = null; } }
+  // استردادُ منحة الزحف بعد موت العامل — مُعاد التسليح ذاتيًّا (موتٌ ثانٍ كان يُيتم
+  // الزحف بصمت)، ومع حارسي «ما زلنا نزحف؟» كي لا تُحتجز منحةٌ يتيمة بعد الانسحاب
+  function lostScan() {
+    if (!scanning) return;
+    swClaim("scan", function (won, h) {
+      if (!won) { cancelScan = true; return; }
+      if (!scanning) { h.release(); return; }
+      scanGrant = h;
+    }, lostScan);
+  }
+  function lostRtl() {
+    if (!rtlDocRunning) return;
+    swClaim("rtl", function (won, h) {
+      if (!won) return; // فقدناها لغيرنا: الطبيب قراءةٌ قصيرة — يكملها بلا منحة
+      if (!rtlDocRunning) { h.release(); return; }
+      rtlGrant = h;
+    }, lostRtl);
   }
 
   // ★ الردّ الفوري (إشعار استلام). كان المحرّك يصمت في كل مسارات الرفض — إن كان مشغولًا،
@@ -536,8 +628,8 @@
     if (!active) return;                        // لا قاموس ⇒ لا معنى للفحص
     if (scanning) { ackScan(); return; }        // نفحص فعلًا: طمئنها بدل الصمت
     ackScan();
-    claimScan(function (won) {
-      if (won) return doScan();
+    swClaim("scan", function (won, h) {
+      if (won) { scanGrant = h; return doScan(); }
       // خسرنا الحجز: إمّا فحصٌ حيّ في تبويب آخر (وسيكتب نتيجته ويدهس إشعارنا)، وإمّا
       // حجزٌ عالق. ننتظر قليلًا، فإن لم يظهر تقدّمٌ من غيرنا صرّحنا بالسبب بدل تركه غامضًا.
       setTimeout(function () {
@@ -551,7 +643,7 @@
           });
         } catch (e) {}
       }, 3000);
-    });
+    }, lostScan);
   }
   function doScan() {
     if (scanning) return;
@@ -597,7 +689,7 @@
       if (!pick) {
         var origins = {};
         for (var q = 0; q < scripts.length; q++) { var uq = urlOf(scripts[q]); if (uq) origins[uq.origin] = 1; }
-        scanning = false; releaseScan();
+        scanning = false; dropScanGrant();
         setScan({ status: "error", error:
           "لم أعثر على ملفات الموقع في هذه الصفحة. تأكد أنك في تبويب claude.ai وأن الصفحة اكتمل تحميلها، ثم حدّثها (Ctrl+F5) وأعد الفحص." +
           " [تشخيص: عدد الملفات " + scripts.length + " · الأصول: " + (Object.keys(origins).join("، ") || "لا شيء") + " · الصفحة: " + location.origin + "]" });
@@ -679,8 +771,14 @@
         // تحقّق من ملكية الحجز كل عشر دفعات: إن مسحه بدءُ فحصٍ جديد أو فاز به تبويب آخر
         // فانسحب بدل مواصلة زحفٍ موازٍ تتداخل كتاباته مع الزاحف الفائز.
         if (++ownCheck % 10 === 0) {
-          return stillOurs(function (ours) {
-            if (!ours) { scanning = false; cancelScan = false; return; }
+          var g = scanGrant;
+          return (g ? function (f) { g.alive(f); } : function (f) { f(true); })(function (ours) {
+            if (!ours) {
+              // فقدنا الملكية (سحبها بدءُ فحصٍ جديد أو خسرنا الاسترداد): انسحب بصمت —
+              // فمن أخذها يكتب النتائج — لكن نظّف الموارد (الانسحاب القديم كان يسرّبها)
+              scanning = false; cancelScan = false; releaseResources();
+              return;
+            }
             stepNow();
           });
         }
@@ -704,7 +802,7 @@
               // التقدّم = المعالَج ÷ (المعالَج + المتبقي)؛ الطابور ينمو أثناء الزحف فهو تقديري
               // at = نبض: صفحة الإعدادات تستدلّ به على تعثّر الفحص (تبويب أُغلق مثلًا)
               setScan({ status: "running", fetched: fetched, found: found, queued: queue.length, missing: 0, at: Date.now() });
-              touchClaim(); // الزحف الكامل يتجاوز 200 ثانية، وحجزٌ بطابعٍ قديم يُعدّ متروكًا
+              if (scanGrant) scanGrant.beat(); // الزحف الكامل يتجاوز 200 ثانية، وحجزٌ بطابعٍ قديم يُعدّ متروكًا
               return yieldTo(step);
             }
             if (texts[a] === null) failed++; else scanOne(texts[a]);
@@ -727,7 +825,7 @@
         seen = null;
       }
       function abort() {
-        scanning = false; cancelScan = false; releaseScan(); releaseResources();
+        scanning = false; cancelScan = false; dropScanGrant(); releaseResources();
         setScan({ status: "cancelled", fetched: fetched, found: found });
       }
       function finish() {
@@ -754,7 +852,7 @@
         }
         scanning = false;
         cancelScan = false;
-        releaseScan();
+        dropScanGrant();
         releaseResources();
         setScan({
           status: "done", fetched: fetched, found: found, capped: capped,
@@ -785,8 +883,8 @@
     }
     if (rtlDocRunning) { setRtlDoc({ status: "running", fetched: 0, at: Date.now() }); return; }
     setRtlDoc({ status: "running", fetched: 0, at: Date.now() }); // إشعار استلام فوري — كالفحص
-    claimScan(function (won) {
-      if (won) return doRtlDoc(RTL, COV);
+    swClaim("rtl", function (won, h) {
+      if (won) { rtlGrant = h; return doRtlDoc(RTL, COV); }
       // خاسر الحجز لا يكتب الخطأ فورًا: الطلب يُذاع لكل التبويبات، والكتابة العمياء
       // كانت تدهس إشعارَ الفائز فتظهر «فحص آخر يعمل» طوالَ فحصٍ يعمل فعلًا (دُحض
       // تجريبيًّا بتبويبين). ننتظر ثم لا نكتب إلا إن لم يظهر أثرٌ حيّ من غيرنا.
@@ -800,7 +898,7 @@
           });
         } catch (e) {}
       }, 3000);
-    });
+    }, lostRtl);
   }
   function doRtlDoc(RTL, COV) {
     rtlDocRunning = true;
@@ -833,7 +931,7 @@
       // نبض بعد جولة الجلب الأولى + تجديد الحجز: أسوأ حالات الجلب (مهلتان ×15ث)
       // تقارب عتبة التعثر 45ث — وبلا نبضٍ يظهر الفحصُ الحيُّ متعثرًا لصفحة الإعدادات
       setRtlDoc({ status: "running", fetched: urls.length, at: Date.now() });
-      touchClaim();
+      if (rtlGrant) rtlGrant.beat();
       // مستوى واحد من @import (نادر لكنه موجود في أنظمة التصميم)
       var extra = [];
       for (var t = 0; t < texts.length; t++) {
@@ -847,7 +945,7 @@
       return Promise.all(extra.map(fetchCss)).then(function (more) { return texts.concat(more); });
     }).then(function (texts) {
       setRtlDoc({ status: "running", fetched: texts.length, at: Date.now() }); // نبض قبل التحليل
-      touchClaim();
+      if (rtlGrant) rtlGrant.beat();
       // أوراق <style> الحرجة المضمّنة في الصفحة تُحلَّل مجانًا (بلا جلب)
       var styles = document.querySelectorAll("style:not([data-cml])");
       var inlineTexts = [];
@@ -892,7 +990,7 @@
         var sv = styled[e].getAttribute("style");
         if (sv && INLINE_RE.test(sv)) inlinePhysical++;
       }
-      releaseScan();
+      dropRtlGrant();
       rtlDocRunning = false;
       setRtlDoc({
         status: "done",
@@ -908,7 +1006,7 @@
         at: Date.now(), seconds: Math.round((Date.now() - t0) / 1000),
       });
     }).catch(function (e) {
-      releaseScan();
+      dropRtlGrant();
       rtlDocRunning = false;
       setRtlDoc({ status: "error", error: "تعذّر فحص الاتجاه: " + (e && e.message ? e.message : e) });
     });

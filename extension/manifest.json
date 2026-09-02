@@ -15,6 +15,9 @@
   "permissions": [
     "storage"
   ],
+  "background": {
+    "service_worker": "sw.js"
+  },
   "content_scripts": [
     {
       "matches": [

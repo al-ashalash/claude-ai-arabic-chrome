@@ -645,26 +645,58 @@
       }
     });
   }
+  // «أيوجد زحف حيّ الآن؟» — يُسأل عامل الخدمة أولًا (المرحلة ٤: حالته هي الحقيقة،
+  // والمنحة تتحرر لحظةَ انقطاع منفذ صاحبها فلا حاجة لعتبات تقادم)، ويُسقَط إلى
+  // فحص مفتاح الحجز القديم حيث لا عامل يرد (قشور الاختبار، أو عاملٌ متعطل).
+  function askBusy(cb) {
+    var done = false;
+    function legacy() {
+      SESS.get(["cml_scan_claim"], function (s) {
+        var c = s.cml_scan_claim;
+        if (c && c.id && c.at && Date.now() - c.at < CMLConst.CLAIM_STALE_MS) { cb(true); return; }
+        // زحفُ وضعِ المحكّم لا يكتب مفتاح الحجز القديم أصلًا — فإن تأخر ردُّ العامل
+        // (إقلاعٌ بارد تحت حِمل) دلّنا عليه نبضُ نتيجةٍ «جارٍ» حديث بدل إنكارٍ كاذب
+        get([CMLConst.K.SCAN_RESULT, CMLConst.K.RTLDOC_RESULT], function (r) {
+          function fresh(x) { return !!(x && x.status === "running" && x.at && Date.now() - x.at < CMLConst.HEARTBEAT_STALL_MS); }
+          cb(fresh(r[CMLConst.K.SCAN_RESULT]) || fresh(r[CMLConst.K.RTLDOC_RESULT]));
+        });
+      });
+    }
+    var t = setTimeout(function () { if (done) return; done = true; legacy(); }, 300);
+    try {
+      chrome.runtime.sendMessage({ type: "status" }, function (r) {
+        if (done) return;
+        done = true;
+        try { clearTimeout(t); } catch (e) {}
+        if (chrome.runtime.lastError || !r) { legacy(); return; }
+        cb(!!r.busy);
+      });
+    } catch (e) {
+      if (!done) { done = true; try { clearTimeout(t); } catch (e2) {} legacy(); }
+    }
+  }
+
   function startScan() {
     // لا نمسح حجزًا حيًّا: مسحُه يُسقط زاحفًا يعمل الآن ويسمح بزاحفٍ ثانٍ يوازيه.
-    // الحجز الأقدم من 90 ثانية متروك (نفس عتبة claimScan في المحرّك) فيُمسح.
-    SESS.get(["cml_scan_claim"], function (s) {
-      var c = s.cml_scan_claim;
-      if (c && c.id && c.at && Date.now() - c.at < CMLConst.CLAIM_STALE_MS) {
+    askBusy(function (busy) {
+      if (busy) {
         $("scanStatus").textContent = "يوجد فحص جارٍ بالفعل في تبويب آخر — انتظر انتهاءه أو أوقفه.";
         $("cancelScan").classList.remove("hidden");
         if (!scanTimer) { scanWaited = 0; scanTimer = setInterval(pollScan, 1000); }
         return;
       }
-      $("startScan").disabled = true;
-      $("cancelScan").classList.remove("hidden");
-      $("scanStatus").textContent = "أُرسل الطلب… تأكد أن تبويب claude.ai مفتوح.";
-      set({ cml_scan_result: null });
-      try { SESS.set({ cml_scan_cancel: null, cml_scan_claim: null, cml_scan_request: Date.now() }); } catch (e) {}
-      scanWaited = 0;
-      if (scanTimer) clearInterval(scanTimer);
-      scanTimer = setInterval(pollScan, 1000);
+      proceedStartScan();
     });
+  }
+  function proceedStartScan() {
+    $("startScan").disabled = true;
+    $("cancelScan").classList.remove("hidden");
+    $("scanStatus").textContent = "أُرسل الطلب… تأكد أن تبويب claude.ai مفتوح.";
+    set({ cml_scan_result: null });
+    try { SESS.set({ cml_scan_cancel: null, cml_scan_claim: null, cml_scan_request: Date.now() }); } catch (e) {}
+    scanWaited = 0;
+    if (scanTimer) clearInterval(scanTimer);
+    scanTimer = setInterval(pollScan, 1000);
   }
 
   function stopScan() {
@@ -816,10 +848,9 @@
   }
 
   function startRtlDoc() {
-    // الحجز المشترك مع فحص الترجمة: لا نُطلق الطبيب وفحصٌ حيٌّ يعمل الآن — القناة واحدة.
-    SESS.get(["cml_scan_claim"], function (s) {
-      var c = s.cml_scan_claim;
-      if (c && c.id && c.at && Date.now() - c.at < CMLConst.CLAIM_STALE_MS) {
+    // التحكيم المشترك مع فحص الترجمة: لا نُطلق الطبيب وفحصٌ حيٌّ يعمل الآن — القناة واحدة.
+    askBusy(function (busy) {
+      if (busy) {
         $("rtlDocStatus").textContent = "يوجد فحص جارٍ الآن (فحص الموقع أو الاتجاه) — انتظر انتهاءه ثم أعد المحاولة.";
         return;
       }

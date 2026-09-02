@@ -1,0 +1,369 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>sw arbiter test</title>
+<!--
+  اختبار محكّم الزحف (المرحلة ٤ — الفحص 2.0). أُضيف مع استبدال حجزِ التخزين بعامل
+  الخدمة: هذا الملف يعيد تمثيل كل سيناريو كان يكسر النظام القديم، ويثبت أن المحكّم
+  الجديد يحسمه بنيويًّا لا برُقَع.
+
+  طبقتان:
+   أ) المحكّم وحده (cml-arbiter.js) بمنافذ مقلَّدة تمثّل التبويبات: منحة واحدة لا غير،
+      الرفض يحمل نوعَ الشاغل، الانقطاع يحرّر فورًا (لا نافذة 90 ثانية)، إعادة الطلب من
+      صاحبها تجديد، النبضة تحدّث الطابع، والرسائل المشوّهة لا تُسقِط شيئًا.
+   ب) المحرّك كاملًا (engine.js) بقشرة chrome فيها local+session وconnect موصول بمحكّم
+      حقيقي، وملفات claude.ai المزيفة نفسها التي يزحف عليها _scantest:
+      ١٠) مسار العامل من الطلب إلى «تم» — والطبقة القديمة نائمة (لا cml_scan_claim).
+      ١١) الرفض صامت غير هدّام، ثم مسارُ الخاسر يصرّح بعد ثلاث ثوانٍ.
+      ١٢) حذفُ connect يُسقط المحرّكَ إلى الحجز القديم فيكتمل الزحف به (والدليل: كتابة
+          cml_scan_claim هذه المرة).
+      ١٣) موتُ العامل في منتصف الزحف: المحرّك يعيد طلب المنحة فورًا ويُتمّ زحفه.
+
+  العقد: document.title = "swtest N/N" — يتساوى الطرفان فقط إذا نجح كل شيء،
+  وعدّاد window.onerror يُفحص صفرًا في الخاتمة.
+-->
+<style>body{font-family:system-ui;padding:16px;max-width:900px;margin:auto}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
+.ok{color:#127a2b;font-weight:700}.bad{color:#b00;font-weight:700}</style>
+
+<h1>اختبار محكّم الزحف (المرحلة ٤)</h1>
+<table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th><th></th></tr></thead><tbody></tbody></table>
+
+<!-- ملف الدخول المزيف — منه يكتشف الزحف بقية الملفات (كما في _scantest تمامًا) -->
+<script src="assets/v1/index-abc123def.js"></script>
+
+<script>
+// عدّاد الأخطاء غير الملتقطة — يُثبَّت قبل تحميل أي شيء ليصطاد أخطاء المحرّك أيضًا
+var jsErrors = 0;
+window.onerror = function () { jsErrors++; };
+
+// ===== قشرة chrome: local + session (بوجود session يسلك المحرّك مسلك الإنتاج) =====
+var __localStore = {}, __sessStore = {};
+var __localWrites = [], __sessWrites = [];
+var __storeListeners = [];
+var __onLocalWrite = null; // خطّاف اختبار ١٣: يُستدعى عند كل كتابة local (محاكاة موت العامل في منتصف الزحف)
+function makeArea(store, writes, areaName) {
+  return {
+    get: function (keys, cb) { cb(Object.assign({}, store)); },
+    set: function (obj, cb) {
+      var ch = {};
+      for (var k in obj) { ch[k] = { newValue: obj[k] }; store[k] = obj[k]; }
+      writes.push(JSON.parse(JSON.stringify(obj)));
+      __storeListeners.forEach(function (fn) { try { fn(ch, areaName); } catch (e) {} });
+      if (cb) cb();
+      if (areaName === "local" && __onLocalWrite) { try { __onLocalWrite(obj); } catch (e) {} }
+    },
+    remove: function (keys, cb) {
+      (Array.isArray(keys) ? keys : [keys]).forEach(function (k) { delete store[k]; });
+      if (cb) cb();
+    },
+  };
+}
+
+// ===== أزواج المنافذ المقلَّدة: العميل بشكل chrome Port والخادم بما يتوقعه attach =====
+// postMessage من طرفٍ يصل مستمعي الطرف الآخر متزامنًا — يكفي لعقد المحكّم، ويجعل
+// «الفورية» (لا انتظار بعد الانقطاع) قابلةً للإثبات في السطر نفسه.
+function makePortPair(name) {
+  var clientMsg = [], clientDis = [], serverMsg = [], serverDis = [];
+  var pair = { name: name || "", sent: [], replies: [], dead: false };
+  pair.client = {
+    name: name || "",
+    postMessage: function (msg) {
+      if (pair.dead) return;
+      pair.sent.push(msg);
+      serverMsg.slice().forEach(function (fn) { try { fn(msg); } catch (e) {} });
+    },
+    onMessage: { addListener: function (fn) { clientMsg.push(fn); } },
+    onDisconnect: { addListener: function (fn) { clientDis.push(fn); } },
+    disconnect: function () { // العميل أغلق (تبويب أُغلق): يبلغ الخادمَ الانقطاعُ
+      if (pair.dead) return;
+      pair.dead = true;
+      serverDis.slice().forEach(function (fn) { try { fn(); } catch (e) {} });
+    },
+  };
+  pair.server = {
+    postMessage: function (msg) {
+      if (pair.dead) return;
+      pair.replies.push(msg);
+      clientMsg.slice().forEach(function (fn) { try { fn(msg); } catch (e) {} });
+    },
+    onMessage: { addListener: function (fn) { serverMsg.push(fn); } },
+    onDisconnect: { addListener: function (fn) { serverDis.push(fn); } },
+  };
+  pair.killFromServer = function () { // مات العامل: يصل العميلَ الانقطاعُ (لا العكس)
+    if (pair.dead) return;
+    pair.dead = true;
+    clientDis.slice().forEach(function (fn) { try { fn(); } catch (e) {} });
+  };
+  return pair;
+}
+
+var pairs = [];      // كل منفذ أنشأه connect — بترتيب الإنشاء (لفحص الرسائل بعديًّا)
+var __arbB = null;   // محكّم الطبقة ب — يُنشأ بعد تحميل cml-arbiter.js، ويُستبدل في ١٣ (موت العامل)
+
+window.chrome = {
+  storage: {
+    local: makeArea(__localStore, __localWrites, "local"),
+    session: makeArea(__sessStore, __sessWrites, "session"),
+    onChanged: { addListener: function (fn) { __storeListeners.push(fn); } },
+  },
+  runtime: {
+    lastError: undefined,
+    connect: function (info) {
+      // يُقرأ __arbB وقت الاستدعاء لا وقت التعريف: اختبار ١٣ يستبدله (عامل جديد بعد الموت)
+      var p = makePortPair(info && info.name);
+      pairs.push(p);
+      __arbB.attach(p.server);
+      return p.client;
+    },
+  },
+};
+</script>
+<script src="../extension/cml-const.js"></script>
+<script src="../extension/cml-arbiter.js"></script>
+<script src="../extension/cml-shared.js"></script>
+<script src="../extension/dictionary.js"></script>
+<script src="../extension/engine.js"></script>
+<script>
+var tb = document.querySelector("#tbl tbody"), pass = 0, total = 0;
+function check(name, expect, got) {
+  total++; var ok = String(expect) === String(got); if (ok) pass++;
+  var tr = document.createElement("tr");
+  [name, expect, got].forEach(function (v) { var td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+  var s = document.createElement("td"); s.className = ok ? "ok" : "bad"; s.textContent = ok ? "✓" : "✗"; tr.appendChild(s);
+  tb.appendChild(tr);
+}
+function lastReply(p) { return p.replies[p.replies.length - 1] || {}; }
+
+// ================= الطبقة أ: المحكّم وحده — سيناريوهات التبويبات =================
+(function () {
+  var A = CMLArbiter;
+
+  // ١) منحة واحدة لا غير — والرفض يحمل نوع الشاغل
+  var arb1 = A.createArbiter();
+  var p11 = makePortPair(), p12 = makePortPair();
+  arb1.attach(p11.server); arb1.attach(p12.server);
+  p11.client.postMessage({ type: "claim", kind: "scan" });
+  check("١) تبويب أول يطلب فيُمنح", "grant", lastReply(p11).type);
+  p12.client.postMessage({ type: "claim", kind: "scan" });
+  check("١) تبويب ثانٍ يُرفض والمنحة قائمة", "deny", lastReply(p12).type);
+  check("١) الرفض يحمل نوع الشاغل", "scan", lastReply(p12).kind);
+
+  // ٢) التسليم: تحرير طوعي ثم منحة للثاني
+  p11.client.postMessage({ type: "release" });
+  p12.client.postMessage({ type: "claim", kind: "scan" });
+  check("٢) بعد التحرير يُمنح الثاني (تسليم)", "grant", lastReply(p12).type);
+
+  // ٣) ★ جوهر المرحلة: انقطاع صاحب المنحة (أُغلق التبويب في منتصف الزحف) يحرّرها
+  //    فورًا — النظام القديم كان يُلزم الثاني انتظارَ نافذة تقادم ٩٠ ثانية.
+  var arb3 = A.createArbiter();
+  var p31 = makePortPair(), p32 = makePortPair();
+  arb3.attach(p31.server); arb3.attach(p32.server);
+  p31.client.postMessage({ type: "claim", kind: "scan" });
+  var t3 = Date.now();
+  p31.client.disconnect();
+  p32.client.postMessage({ type: "claim", kind: "scan" });
+  var dt3 = Date.now() - t3;
+  check("٣ ★ انقطاع صاحبها ثم طلبٌ فوري من غيره = منحة", "grant", lastReply(p32).type);
+  check("٣ ★ بلا انتظار (كانت ٩٠ ثانية) — في اللحظة نفسها", "true", dt3 < 100);
+
+  // ٤) الحالة الثلاثية: خامل ← مشغول بنوعه ← خامل
+  var arb4 = A.createArbiter();
+  var p41 = makePortPair();
+  arb4.attach(p41.server);
+  check("٤) قبل أي طلب: خامل", "false", arb4.status().busy);
+  p41.client.postMessage({ type: "claim", kind: "scan" });
+  var s4 = arb4.status();
+  check("٤) أثناء المنحة: مشغول بنوع scan", "scan", s4.busy === true ? s4.kind : "خامل");
+  p41.client.postMessage({ type: "release" });
+  check("٤) بعد التحرير: خامل", "false", arb4.status().busy);
+
+  // ٥) إعادة الطلب من المنفذ نفسه = تجديد (استئناف بعد إعادة تشغيل عامل الخدمة)
+  var arb5 = A.createArbiter();
+  var p51 = makePortPair();
+  arb5.attach(p51.server);
+  p51.client.postMessage({ type: "claim", kind: "scan" });
+  p51.client.postMessage({ type: "claim", kind: "scan" });
+  check("٥) طلبان من المنفذ نفسه: منحتان (استئناف)", "grant/grant",
+    p51.replies.map(function (m) { return m.type; }).join("/"));
+
+  // ٦) النبضة تحدّث طابع المنحة — بساعة محقونة كي يكون الزمن حتميًّا
+  var t6 = 0;
+  var arb6 = A.createArbiter(function () { return t6; });
+  var p61 = makePortPair();
+  arb6.attach(p61.server);
+  t6 = 1; p61.client.postMessage({ type: "claim", kind: "scan" });
+  check("٦) طابع المنحة = لحظة الطلب", "1", arb6.status().at);
+  t6 = 5; p61.client.postMessage({ type: "beat" });
+  check("٦) النبضة تحدّث الطابع", "5", arb6.status().at);
+
+  // ٧) تنافي الأنواع: الفحص وطبيب الاتجاه لا يجريان معًا
+  var arb7 = A.createArbiter();
+  var p71 = makePortPair(), p72 = makePortPair();
+  arb7.attach(p71.server); arb7.attach(p72.server);
+  p71.client.postMessage({ type: "claim", kind: "scan" });
+  p72.client.postMessage({ type: "claim", kind: "rtl" });
+  check("٧) طلب rtl والفحص جارٍ: رفضٌ باسم الشاغل", "deny/scan",
+    lastReply(p72).type + "/" + lastReply(p72).kind);
+  p71.client.postMessage({ type: "release" });
+  p72.client.postMessage({ type: "claim", kind: "rtl" });
+  check("٧) بعد تحرير الفحص يُمنح طبيب الاتجاه", "grant", lastReply(p72).type);
+  check("٧) والحالة تحمل النوع الجديد", "rtl", arb7.status().kind);
+
+  // ٨) الصلابة: رسائل مشوّهة وتحريرٌ من غير صاحب المنحة — لا رمي ولا مساس بالمنحة
+  var arb8 = A.createArbiter();
+  var p81 = makePortPair(), p82 = makePortPair();
+  arb8.attach(p81.server); arb8.attach(p82.server);
+  p81.client.postMessage({ type: "claim", kind: "scan" });
+  var thrown8 = 0;
+  [null, "نص خام", {}, { type: "unknown" }, { type: "release" }].forEach(function (m) {
+    try { p82.client.postMessage(m); } catch (e) { thrown8++; }
+  });
+  check("٨) عبث الرسائل لا يرمي شيئًا", "0", thrown8);
+  var s8 = arb8.status();
+  check("٨) والمنحة لم تُمسّ (حتى بتحرير غير صاحبها)", "true", s8.busy === true && s8.kind === "scan");
+
+  // ٩) الرفض لا يمسّ صاحب المنحة: نبضه يعمل بعده وتحريره يحرّر
+  var t9 = 1;
+  var arb9 = A.createArbiter(function () { return t9; });
+  var p91 = makePortPair(), p92 = makePortPair();
+  arb9.attach(p91.server); arb9.attach(p92.server);
+  p91.client.postMessage({ type: "claim", kind: "scan" });
+  t9 = 3; p92.client.postMessage({ type: "claim", kind: "scan" }); // يُرفض
+  check("٩) رفضُ الثاني لا يغيّر طابع الأول", "1", arb9.status().at);
+  t9 = 7; p91.client.postMessage({ type: "beat" });
+  check("٩) نبض الأول يعمل بعد رفض الثاني", "7", arb9.status().at);
+  p91.client.postMessage({ type: "release" });
+  p92.client.postMessage({ type: "claim", kind: "scan" });
+  check("٩) وتحريره يحرّر فيُمنح الثاني", "grant", lastReply(p92).type);
+})();
+
+// ================= الطبقة ب: المحرّك كاملًا عبر قشرة chrome =================
+__arbB = CMLArbiter.createArbiter();
+
+function waitFor(pred, ms, cb) {
+  var t0 = Date.now();
+  var iv = setInterval(function () {
+    if (pred()) { clearInterval(iv); cb(true); }
+    else if (Date.now() - t0 > ms) { clearInterval(iv); cb(false); }
+  }, 100);
+}
+function resetStores() { // تصفير بلا بثّ أحداث — كي لا يوقظ التنظيفُ المحرّكَ
+  var k;
+  for (k in __localStore) delete __localStore[k];
+  for (k in __sessStore) delete __sessStore[k];
+  __localWrites.length = 0;
+  __sessWrites.length = 0;
+}
+function fireScan() { chrome.storage.session.set({ cml_scan_request: Date.now() }); }
+
+// ١٠) ★ مسار العامل من الطلب إلى «تم» — والطبقة القديمة نائمة
+function test10(next) {
+  resetStores();
+  var base = pairs.length;
+  fireScan();
+  waitFor(function () { var r = __localStore.cml_scan_result; return !!(r && r.status === "done"); }, 8000, function (ok) {
+    var r = __localStore.cml_scan_result || {};
+    var p = pairs[base];
+    check("١٠ ★ المحرّك اتصل بمنفذ باسم القناة", CMLConst.PORT_CRAWL, p ? p.name : "(لا اتصال)");
+    var c0 = (p && p.sent[0]) || {};
+    var r0 = (p && p.replies[0]) || {};
+    check("١٠ ★ أول رسالة: طلب منحة scan فمُنح", "claim/scan/grant",
+      (c0.type || "؟") + "/" + (c0.kind || "؟") + "/" + (r0.type || "؟"));
+    check("١٠ ★ الزحف اكتمل ووجد نصوصًا", "true", ok && r.status === "done" && r.found > 0);
+    check("١٠) نبضات عبر المنفذ أثناء الزحف", "true",
+      !!(p && p.sent.some(function (m) { return m && m.type === "beat"; })));
+    check("١٠ ★ الطبقة القديمة نائمة: لا كتابة cml_scan_claim في session", "0",
+      __sessWrites.filter(function (w) { return Object.prototype.hasOwnProperty.call(w, "cml_scan_claim"); }).length);
+    check("١٠) المنحة محرَّرة بعد الانتهاء", "false", __arbB.status().busy);
+    next();
+  });
+}
+
+// ١١) ★ الرفض صامت غير هدّام — ثم مسار الخاسر يصرّح بعد ثلاث ثوانٍ
+function test11(next) {
+  resetStores();
+  var hp = makePortPair("cml-crawl"); // «تبويب آخر» وهمي يحجز طبيب الاتجاه ولا ينبض أبدًا
+  __arbB.attach(hp.server);
+  hp.client.postMessage({ type: "claim", kind: "rtl" });
+  check("١١) حاجزٌ وهمي حجز rtl", "grant", lastReply(hp).type);
+  var base = pairs.length;
+  fireScan(); // الاتصال والرفض متزامنان داخل القشرة — يمكن فحصهما فورًا
+  var ep = pairs[base];
+  var d = (ep && ep.replies[0]) || {};
+  check("١١ ★ المحرّك رُفض ومعه نوع الشاغل", "deny/rtl", (d.type || "؟") + "/" + (d.kind || "؟"));
+  setTimeout(function () {
+    var r = __localStore.cml_scan_result;
+    check("١١ ★ خلال 1.5ث: لا تقدّم زحف ولا دهس (إشعار الاستلام فقط)", "true",
+      !!(r && r.status === "running" && !(r.fetched > 0)));
+    setTimeout(function () {
+      var r2 = __localStore.cml_scan_result || {};
+      check("١١ ★ بعد 3.5ث: مسار الخاسر يصرّح بالحجز نصًّا", "true",
+        r2.status === "error" && String(r2.error).indexOf("ما زال محجوزًا") !== -1);
+      var s = __arbB.status();
+      check("١١) منحة الحاجز لم تُمسّ طوال ذلك", "true", s.busy === true && s.kind === "rtl");
+      hp.client.postMessage({ type: "release" }); // تنظيف قبل ١٢
+      next();
+    }, 2200); // 1400 + 2200 = 3.6ث من الطلب — بعد مهلة الخاسر (3ث)
+  }, 1400);
+}
+
+// ١٢) ★ طبقة السقوط: لا connect ⇒ الحجز القديم يشتغل ويُتمّ الزحف
+function test12(next) {
+  resetStores();
+  var saved = chrome.runtime.connect;
+  delete chrome.runtime.connect;
+  fireScan();
+  waitFor(function () { var r = __localStore.cml_scan_result; return !!(r && r.status === "done"); }, 8000, function (ok) {
+    chrome.runtime.connect = saved;
+    var r = __localStore.cml_scan_result || {};
+    check("١٢ ★ بلا عامل: الزحف اكتمل بالحجز القديم", "true", ok && r.status === "done" && r.found > 0);
+    check("١٢ ★ والدليل: cml_scan_claim كُتب في session هذه المرة", "true",
+      __sessWrites.some(function (w) { return !!w.cml_scan_claim; }));
+    check("١٢) والحجز محرَّر بعد الانتهاء", "true", !__sessStore.cml_scan_claim);
+    next();
+  });
+}
+
+// ١٣) ★ موت العامل في منتصف الزحف: إعادة طلبٍ فورية والزحف يبلغ «تم»
+function test13(next) {
+  resetStores();
+  var base = pairs.length;
+  var killed = false;
+  __onLocalWrite = function (obj) {
+    var r = obj.cml_scan_result;
+    if (killed || !r || r.status !== "running" || !(r.fetched > 0)) return;
+    killed = true;
+    __onLocalWrite = null;
+    // موت عامل الخدمة: يذهب المحكّم بذاكرته (نسخة جديدة) وينقطع منفذ المحرّك
+    __arbB = CMLArbiter.createArbiter();
+    pairs[base].killFromServer();
+  };
+  fireScan();
+  waitFor(function () { var r = __localStore.cml_scan_result; return !!(r && r.status === "done"); }, 8000, function (ok) {
+    __onLocalWrite = null;
+    var r = __localStore.cml_scan_result || {};
+    check("١٣ ★ قُتل العامل بعد أول تقدّم فعلًا", "true", killed);
+    var p2 = pairs[base + 1];
+    check("١٣ ★ المحرّك أعاد الاتصال فطلب فمُنح", "claim/grant",
+      p2 ? (((p2.sent[0] && p2.sent[0].type) || "؟") + "/" + ((p2.replies[0] && p2.replies[0].type) || "؟")) : "(لا اتصال ثانٍ)");
+    check("١٣ ★ الزحف بلغ «تم» رغم الموت", "true", ok && r.status === "done" && r.found > 0);
+    check("١٣) والمنحة الجديدة محرَّرة بعد الانتهاء", "false", __arbB.status().busy);
+    next();
+  });
+}
+
+function finish() {
+  check("لا أخطاء JavaScript غير ملتقطة في الصفحة كلها", "0", jsErrors);
+  document.title = "swtest " + pass + "/" + total;
+  var h = document.createElement("p");
+  h.className = pass === total ? "ok" : "bad";
+  h.textContent = "SWTEST: " + pass + "/" + total + (pass === total ? " — all pass" : " — FAIL");
+  document.body.appendChild(h);
+}
+
+// الترتيب مقصود (١٠ ثم ١١ ثم ١٢ ثم ١٣): كل اختبار يصفّر المخازن ويرث محرّكًا خاملًا
+setTimeout(function () {
+  test10(function () { test11(function () { test12(function () { test13(finish); }); }); });
+}, 50);
+</script>

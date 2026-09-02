@@ -34,6 +34,10 @@
     userPatterns: [], // أنماط وَلّدها الاستيراد من النصوص ذات المتغيّرات
     rtl: true, // full page dir=rtl ON by default for RTL languages; user can turn it off if a screen misbehaves
     chatrtl: true, // fix direction of conversation text (dir=auto) — ON by default for Arabic
+    // محرّك الاتجاه (المرحلة ٣): "v2" الجذري افتراضيًا — سمة data-cml-rtl تفعّل
+    // rtl-overrides.css المولَّد (قلب منطقي شامل لأصناف الموقع). "v1" يبقيه خاملًا
+    // فتعمل الإصلاحات النقطية في base.css وحدها (مخرج توافقٍ إن ساءت شاشة).
+    rtlEngine: "v2",
   };
   var active = null;
   var pluralRes = null;
@@ -92,12 +96,17 @@
       if (state.rtl) {
         html.setAttribute("dir", active.dir);
         html.setAttribute("lang", state.lang);
+        // بوابة محرّك v2: rtl-overrides.css كله خلف هذه السمة — بلاها خاملٌ حرفيًّا
+        if (active.dir === "rtl" && state.rtlEngine !== "v1") html.setAttribute("data-cml-rtl", "v2");
+        else html.removeAttribute("data-cml-rtl");
       } else {
         restoreAttr(html, "dir", origDir);
         restoreAttr(html, "lang", origLang);
+        html.removeAttribute("data-cml-rtl");
       }
     } else {
       html.removeAttribute("data-cml");
+      html.removeAttribute("data-cml-rtl");
       restoreAttr(html, "dir", origDir);
       restoreAttr(html, "lang", origLang);
       html.style.removeProperty("--cml-font");
@@ -761,6 +770,151 @@
     })();
   }
 
+  // ---------- «طبيب الاتجاه» (المرحلة ٣) — شقيق فحص الترجمة ----------
+  // يجلب CSS الموقع الحيّ من داخل الصفحة (نفس أصل الفحص وقيوده)، يحلّله بالنسخة
+  // الواحدة CMLRtl، ويقارن كل إعلان فيزيائي ببصمات التغطية المشحونة — فيكشف ما
+  // استجدّ في نشرة الموقع ولا يقلبه rtl-overrides.css، تمامًا كما يكشف فحصُ
+  // الترجمة النصوصَ غير المترجمة. يتشارك الحجز مع الفحص فلا يجريان معًا.
+  var rtlDocRunning = false;
+  function setRtlDoc(o) { try { chrome.storage.local.set({ cml_rtldoc_result: o }); } catch (e) {} }
+  function runRtlDoc() {
+    if (window.top !== window) return;
+    var RTL = globalThis.CMLRtl, COV = globalThis.CMLRtlCoverage;
+    if (!RTL || !COV || !COV.keys) {
+      setRtlDoc({ status: "error", error: "ملفات محرّك الاتجاه غير محمّلة — أعد تحميل التبويب بعد تحديث الإضافة." });
+      return;
+    }
+    if (rtlDocRunning) { setRtlDoc({ status: "running", fetched: 0, at: Date.now() }); return; }
+    setRtlDoc({ status: "running", fetched: 0, at: Date.now() }); // إشعار استلام فوري — كالفحص
+    claimScan(function (won) {
+      if (won) return doRtlDoc(RTL, COV);
+      // خاسر الحجز لا يكتب الخطأ فورًا: الطلب يُذاع لكل التبويبات، والكتابة العمياء
+      // كانت تدهس إشعارَ الفائز فتظهر «فحص آخر يعمل» طوالَ فحصٍ يعمل فعلًا (دُحض
+      // تجريبيًّا بتبويبين). ننتظر ثم لا نكتب إلا إن لم يظهر أثرٌ حيّ من غيرنا.
+      setTimeout(function () {
+        try {
+          chrome.storage.local.get(["cml_rtldoc_result"], function (s) {
+            var r = s.cml_rtldoc_result;
+            if (r && r.status === "running" && r.at && Date.now() - r.at < 20000) return; // فائز حيّ
+            if (r && r.status !== "running") return; // أنهى أو أخطأ — نتيجته أولى
+            setRtlDoc({ status: "error", error: "يبدو أن فحصًا آخر محجوز (الترجمة أو الاتجاه). إن لم يكن ثمة فحص يعمل فعلًا فأعد المحاولة بعد لحظات." });
+          });
+        } catch (e) {}
+      }, 3000);
+    });
+  }
+  function doRtlDoc(RTL, COV) {
+    rtlDocRunning = true;
+    var t0 = Date.now();
+    var covSet = {};
+    for (var c = 0; c < COV.keys.length; c++) covSet[COV.keys[c]] = 1;
+
+    function urlOk(u) {
+      try {
+        var p = new URL(u, location.href);
+        if (p.protocol !== "https:" && p.protocol !== "http:") return null; // أوراقنا chrome-extension تُستبعد هنا
+        var h = p.hostname;
+        if (h === location.hostname || /(^|\.)claude\.ai$/.test(h) || /(^|\.)anthropic\.com$/.test(h)) return p.href;
+      } catch (e) {}
+      return null;
+    }
+    var urls = [];
+    var links = document.querySelectorAll("link[rel='stylesheet'][href]");
+    for (var i = 0; i < links.length; i++) {
+      var ok = urlOk(links[i].href);
+      if (ok && urls.indexOf(ok) === -1) urls.push(ok);
+    }
+    function fetchCss(u) {
+      return Promise.race([
+        fetch(u).then(function (r) { return r.ok ? r.text() : null; }).catch(function () { return null; }),
+        new Promise(function (res) { setTimeout(function () { res(null); }, 15000); }),
+      ]);
+    }
+    Promise.all(urls.map(fetchCss)).then(function (texts) {
+      // نبض بعد جولة الجلب الأولى + تجديد الحجز: أسوأ حالات الجلب (مهلتان ×15ث)
+      // تقارب عتبة التعثر 45ث — وبلا نبضٍ يظهر الفحصُ الحيُّ متعثرًا لصفحة الإعدادات
+      setRtlDoc({ status: "running", fetched: urls.length, at: Date.now() });
+      touchClaim();
+      // مستوى واحد من @import (نادر لكنه موجود في أنظمة التصميم)
+      var extra = [];
+      for (var t = 0; t < texts.length; t++) {
+        if (texts[t] === null) continue;
+        var im = RTL.parseCss(texts[t]).imports;
+        for (var m = 0; m < im.length; m++) {
+          var r2 = urlOk(new URL(im[m], urls[t]).href);
+          if (r2 && urls.indexOf(r2) === -1 && extra.indexOf(r2) === -1) extra.push(r2);
+        }
+      }
+      return Promise.all(extra.map(fetchCss)).then(function (more) { return texts.concat(more); });
+    }).then(function (texts) {
+      setRtlDoc({ status: "running", fetched: texts.length, at: Date.now() }); // نبض قبل التحليل
+      touchClaim();
+      // أوراق <style> الحرجة المضمّنة في الصفحة تُحلَّل مجانًا (بلا جلب)
+      var styles = document.querySelectorAll("style:not([data-cml])");
+      var inlineTexts = [];
+      for (var s = 0; s < styles.length; s++) inlineTexts.push(styles[s].textContent || "");
+      var failed = 0, rulesN = 0, physical = 0, covered = 0, animatedPhysical = 0;
+      var uncovered = [], unflippable = [], localSeen = {};
+      function chewSheet(tx) {
+        if (tx === null) { failed++; return; }
+        var p = RTL.parseCss(tx);
+        animatedPhysical += p.stats.animatedPhysical || 0;
+        for (var r = 0; r < p.rules.length; r++) {
+          var rule = p.rules[r];
+          rulesN++;
+          if (rule.sel.indexOf("data-cml") !== -1) continue;               // مخرجاتنا
+          if (/\[dir\s*[=\]]|:dir\(/.test(rule.sel)) continue;             // واعٍ بالاتجاه
+          for (var d = 0; d < rule.decls.length; d++) {
+            var a = RTL.analyzeDecl(rule.decls[d].prop, rule.decls[d].value);
+            if (!a || a.kind === "logical") continue;
+            physical++;
+            if (a.kind === "physical-unflippable") {
+              if (unflippable.length < 50) unflippable.push({ sel: rule.sel.slice(0, 120), prop: rule.decls[d].prop, reason: a.reason });
+              continue;
+            }
+            var key = RTL.coverageKey(rule.ctx, rule.sel, rule.decls[d].prop);
+            if (localSeen[key]) continue;
+            localSeen[key] = 1;
+            if (covSet[key]) { covered++; continue; }
+            if (uncovered.length < CONST.RTLDOC_CAP) {
+              uncovered.push({ sel: rule.sel.slice(0, 120), prop: rule.decls[d].prop, value: rule.decls[d].value.slice(0, 80) });
+            }
+          }
+        }
+      }
+      for (var x = 0; x < texts.length; x++) chewSheet(texts[x]);
+      for (var y = 0; y < inlineTexts.length; y++) chewSheet(inlineTexts[y]);
+      // جولة على الأنماط السطرية — عدٌّ للتصريح فقط، فمبدؤنا ألّا تُمسّ
+      var INLINE_RE = /(?:^|;)\s*(left|right|margin-left|margin-right|padding-left|padding-right|float|clear)\s*:/;
+      var inlinePhysical = 0;
+      var styled = document.querySelectorAll("[style]");
+      var lim = Math.min(styled.length, 4000);
+      for (var e = 0; e < lim; e++) {
+        var sv = styled[e].getAttribute("style");
+        if (sv && INLINE_RE.test(sv)) inlinePhysical++;
+      }
+      releaseScan();
+      rtlDocRunning = false;
+      setRtlDoc({
+        status: "done",
+        files: urls.length, failed: failed, rules: rulesN,
+        physical: physical, covered: covered,
+        // العدّ الحقيقي قبل القصّ (عقد الفحص نفسه: القائمة تُقصّ والعدّ يصدق)
+        uncovered: Object.keys(localSeen).length - covered,
+        shown: uncovered.length,
+        list: uncovered, unflippable: unflippable,
+        animatedPhysical: animatedPhysical, // حركات اتجاهية — تُبلَّغ ولا تُقلب (قرار)
+        inlinePhysical: inlinePhysical, inlineChecked: lim,
+        shipped: COV.keys.length,
+        at: Date.now(), seconds: Math.round((Date.now() - t0) / 1000),
+      });
+    }).catch(function (e) {
+      releaseScan();
+      rtlDocRunning = false;
+      setRtlDoc({ status: "error", error: "تعذّر فحص الاتجاه: " + (e && e.message ? e.message : e) });
+    });
+  }
+
   function fullPass() {
     applyChrome();
     if (state.enabled && active) walk(document.body || document.documentElement);
@@ -797,13 +951,14 @@
 
   function loadSettings(cb) {
     try {
-      chrome.storage.local.get(["cml_lang", "cml_enabled", "cml_overrides", "cml_user_patterns", "cml_rtl", "cml_chatrtl"], function (r) {
+      chrome.storage.local.get(["cml_lang", "cml_enabled", "cml_overrides", "cml_user_patterns", "cml_rtl", "cml_chatrtl", "cml_rtl_engine"], function (r) {
         if (r.cml_lang) state.lang = r.cml_lang;
         if (typeof r.cml_enabled === "boolean") state.enabled = r.cml_enabled;
         if (r.cml_overrides) state.overrides = r.cml_overrides;
         if (Array.isArray(r.cml_user_patterns)) state.userPatterns = r.cml_user_patterns;
         if (typeof r.cml_rtl === "boolean") state.rtl = r.cml_rtl;
         if (typeof r.cml_chatrtl === "boolean") state.chatrtl = r.cml_chatrtl;
+        if (r.cml_rtl_engine === "v1") state.rtlEngine = "v1"; // كل ما عداها = v2 الافتراضي
         purgeUnusedKeys();
         cb();
       });
@@ -817,6 +972,7 @@
       if (area === scanArea) {
         if (ch.cml_scan_request && ch.cml_scan_request.newValue) runScan(); // طلب فحص من صفحة الإعدادات
         if (ch.cml_scan_cancel && ch.cml_scan_cancel.newValue) cancelScan = true;
+        if (ch.cml_rtldoc_request && ch.cml_rtldoc_request.newValue) runRtlDoc(); // طبيب الاتجاه
       }
       if (area !== "local") return;
       var relevant = false;
@@ -829,6 +985,8 @@
       // انقلبت الصفحة المفتوحة إلى LTR بينما الإعدادات تعرضها مفعّلة.
       if (ch.cml_rtl) { state.rtl = ch.cml_rtl.newValue !== false; relevant = true; }
       if (ch.cml_chatrtl) { state.chatrtl = ch.cml_chatrtl.newValue !== false; relevant = true; }
+      // كالـRTL تمامًا: الحذف (إعادة الضبط) يصل newValue=undefined والافتراض v2
+      if (ch.cml_rtl_engine) { state.rtlEngine = ch.cml_rtl_engine.newValue === "v1" ? "v1" : "v2"; relevant = true; }
       if (relevant) { compile(); fullPass(); }
     });
   } catch (e) {}

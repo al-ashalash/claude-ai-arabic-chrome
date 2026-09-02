@@ -24,6 +24,9 @@
       SCAN_CLAIM: "cml_scan_claim",
       RECON_DISMISSED: "cml_recon_dismissed",
       BAD_RULES: "cml_bad_rules",
+      RTL_ENGINE: "cml_rtl_engine",       // "v2" (جذري، الافتراضي) أو "v1" (نقطي للتوافق)
+      RTLDOC_REQUEST: "cml_rtldoc_request", // طلب طبيب الاتجاه (عابر — SESS)
+      RTLDOC_RESULT: "cml_rtldoc_result",   // نتيجته (دائمة — local، كنتيجة الفحص)
       // مفاتيح بناءات ما قبل النشر — تُحذف عند الإقلاع ولا تُستعمل
       LEGACY_COLLECT: "cml_collect",
       LEGACY_COLLECTED: "cml_collected",
@@ -34,6 +37,7 @@
       "cml_enabled", "cml_rtl", "cml_chatrtl", "cml_overrides", "cml_user_patterns",
       "cml_scan_request", "cml_scan_result", "cml_scan_cancel", "cml_scan_claim",
       "cml_recon_dismissed", "cml_bad_rules",
+      "cml_rtl_engine", "cml_rtldoc_request", "cml_rtldoc_result",
     ],
     UNUSED_KEYS: ["cml_collect", "cml_collected"],
 
@@ -45,6 +49,7 @@
     // ---- عتبات الفحص ----
     CLAIM_STALE_MS: 90000,  // حجز أقدم من هذا متروك (يطابقه startScan وclaimScan حكمًا)
     SCAN_CAP: 4000,         // أقصى ما يُخزَّن من غير المترجَم (القائمتان تُقصان، العدّ يصدق)
+    RTLDOC_CAP: 500,        // أقصى ما يُخزَّن من إعلانات فيزيائية غير مغطاة (العدّ يصدق)
     SCAN_PARALLEL: 6,       // توازي الجلب — لا يزاحم بث المحادثة على الاتصال نفسه
     HEARTBEAT_STALL_MS: 45000, // نبض أقدم من هذا في «جارٍ» = فحص متعثر
 

@@ -16,6 +16,11 @@ html[data-cml="on"][dir="rtl"] body {
 }
 
 /* --- Full RTL layout (only when the RTL toggle is ON: html dir="rtl") --- */
+/* الإصلاحات النقطية كلها !important، وقانون الطبقات في المهمّات منقلب (المبكر
+   يغلب) — فتُلفّ في @layer cml-point التي يعلنها rtl-overrides.css **قبل** طبقة
+   مهمّات المحرّك cml-imp: فتبقى للنقطيات الكلمة الأخيرة فوق المحرّك وفوق مهمّات
+   الموقع المطبَّقة جميعًا (التي كانت قبل هذا اللفّ تغلب مهمّاتنا غير المطبَّقة). */
+@layer cml-point {
 /* claude.ai pins its sidebar to the physical left; mirror it to the right and
    move the content offset, tracking the live --df-sidebar-width variable. */
 html[data-cml="on"][dir="rtl"] .dframe-sidebar { left: auto !important; right: 0 !important; }
@@ -49,3 +54,4 @@ html[data-cml="on"][dir="rtl"] fieldset div.absolute.bottom-0.right-0 {
 html[data-cml="on"][dir="rtl"] fieldset span.pointer-events-none.absolute.left-0.top-0 {
   left: auto !important; right: 0 !important;
 }
+} /* نهاية @layer cml-point */

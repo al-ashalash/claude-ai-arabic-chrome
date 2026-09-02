@@ -27,6 +27,9 @@ const FILES = [
   ["web/user/dictionaries/ar.json", "dictionaries/ar.json"],
   ["web/code/languages.json", "tools/languages.json"],
   ["web/code/toolchain/icon-render.html", "tools/icon-render.html"], // مصدر الأيقونة
+  // الوثيقة الإنجليزية لمهندسي Anthropic — ملفًا مفردًا عمدًا: مجلد docs كله فيه
+  // مواد داخلية (STORE-LISTING) لا تُنشر، وقائمة السماح تنسخ المذكور وحده
+  ["web/code/docs/RTL-UPSTREAM.md", "docs/RTL-UPSTREAM.md"],
 ];
 const DIRS = [
   ["web/user/extension", "extension"],            // الإضافة نفسها

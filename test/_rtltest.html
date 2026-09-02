@@ -1,0 +1,248 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>rtl test</title>
+<!--
+  اختبار محرّك الاتجاه الجذري (المرحلة ٣ — 2026-09-02).
+
+  طبقتان:
+   ١) وحدات CMLRtl الصرفة: المحلّل (تعليقات/طبقات/تداخل/تهريب/متغيّرات التبديل/@keyframes)،
+      وجدول analyzeDecl إعلانًا إعلانًا، وترتيب flipSheet (المصفِّرات ثم المنطقيات بفرز
+      رتبة الطبقة)، وقسم dirBoost (قواعد المؤلف المشروطة بـRTL تفوز)، وعقم إعادة القلب
+      (مخرجاتنا خلف البوابة فلا تُقلب ثانية)، وثبات مفتاح التغطية.
+   ٢) التكامل مع الناتج المولَّد الحقيقي: نولّد ورقة أنماط صغيرة بمسار التوليد نفسه
+      (parseCss ← flipSheet ← serializeRules) ونتحقق بـgetComputedStyle من ضمانة
+      القسمين على عنصر جامع لصنفين، وانبثاق الصواب في جزر LTR وفقرات dir=auto،
+      وحرمة الأنماط السطرية، وخمول الملف بلا بوابة، وبقاء إصلاحات base النقطية
+      (!important) طبقةً أخيرة — ثم دخان الملف الحقيقي: كل قاعدة خلف البوابة وبلا
+      أخطاء تحليل وبصمات التغطية بالعدد المتوقع.
+
+  لماذا صفحة متصفح لا Node: نصف الضمانات (التعاقب، الخصائص المنطقية في RTL، الجزر،
+  dir=auto، السطري يغلب) يحسمها محرّك المتصفح نفسه — لا بديل عن getComputedStyle.
+-->
+<style>body{font-family:system-ui;padding:16px;max-width:1000px;margin:auto}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
+.ok{color:#127a2b;font-weight:700}.bad{color:#b00;font-weight:700}
+#stage{position:absolute;left:-9999px;top:0}</style>
+<link rel="stylesheet" href="../extension/rtl-overrides.css">
+
+<h1>اختبار محرّك الاتجاه الجذري</h1>
+<table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th><th></th></tr></thead><tbody></tbody></table>
+
+<!-- المسرح: مرسوم خارج الشاشة (لا display:none — نحتاج قيم التموضع المستعملة) -->
+<div id="stage">
+  <div id="fxCompose" class="fx-ml fx-mr"></div>
+  <div style="position:relative;width:100px;height:40px"><div id="fxAbs" class="fx-left"></div></div>
+  <p id="fxTa" class="fx-ta">نص للمحاذاة</p>
+  <pre id="fxPre"><div id="fxIsland" class="fx-ml"></div></pre>
+  <div dir="auto" id="fxAuto">Hello world<div id="fxAutoChild" class="fx-ml"></div></div>
+  <div style="position:relative;width:100px;height:40px"><div id="fxInline" class="fx-left" style="left:10px"></div></div>
+  <div id="fxGate" class="fx-ml"></div>
+  <div id="fxPf" class="fx-pf"></div>
+</div>
+
+<script>window.__jsErrors = 0; window.onerror = function () { window.__jsErrors++; };</script>
+<script src="../extension/cml-const.js"></script>
+<script src="../extension/cml-rtl.js"></script>
+<script src="../extension/rtl-coverage.js"></script>
+<script>
+var tb = document.querySelector("#tbl tbody"), pass = 0, total = 0;
+function check(name, expect, got) {
+  total++; var ok = String(expect) === String(got); if (ok) pass++;
+  var tr = document.createElement("tr");
+  [name, expect, got].forEach(function (v) { var td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+  var s = document.createElement("td"); s.className = ok ? "ok" : "bad"; s.textContent = ok ? "✓" : "✗"; tr.appendChild(s);
+  tb.appendChild(tr);
+}
+
+var R = window.CMLRtl, GATE = 'html[data-cml-rtl="v2"]';
+check("CMLRtl محمّل وبوابته صحيحة", GATE, R && R.GATE);
+
+// ===== الطبقة ١/أ: المحلّل =====
+var PT = '@layer a, b;\n' +
+  '@layer c{.k{margin-left:1px}}\n' +
+  '/* تعليق يجب أن يسقط */ .cm{margin-left:2px}\n' +
+  '@media (min-width:100px){.md{left:1px}}\n' +
+  '.p{&:hover{margin-left:2px}}\n' +
+  '.left-1\\/2{left:50%}\n' +
+  '.t{--x: ;}\n' +
+  '@keyframes spin{from{left:0}to{left:10px}}';
+var P = R.parseCss(PT);
+function findRule(rules, sel) { for (var i = 0; i < rules.length; i++) if (rules[i].sel === sel) return rules[i]; return null; }
+check("التعليق قبل القاعدة يُسقَط فيبقى المحدِّد نظيفًا", "true", !!findRule(P.rules, ".cm"));
+var md = findRule(P.rules, ".md");
+check("سياق @media يُحفظ على القاعدة", "@media (min-width:100px)", md ? md.ctx.join("|") : "(لا قاعدة)");
+check("ترتيب الطبقات من التصريح والكتل معًا", "a,b,c", P.layerOrder.join(","));
+var ph = findRule(P.rules, ".p:hover");
+check("التداخل الحديث: & يُستبدل بالأب", "margin-left", ph ? ph.decls[0].prop : "(لا قاعدة)");
+check("المحدِّد المهرَّب يبقى كما هو", "true", !!findRule(P.rules, ".left-1\\/2"));
+check("متغيّر التبديل ‎--x: ;‎ يُهمل بصمت (لا خطأ تحليل)", "0", P.stats.parseErrors);
+check("@keyframes تُتخطى كتلة كاملة", "true", !findRule(P.rules, "from") && !findRule(P.rules, "to") && P.stats.skippedAt >= 1);
+check("عدد القواعد المحلَّلة", "5", P.rules.length);
+
+// ===== الطبقة ١/ب: جدول analyzeDecl =====
+function fmtA(a) {
+  if (a === null) return "null";
+  if (a.kind === "flip") {
+    var s = "flip " + a.flips.map(function (f) { return f.prop + ":" + f.value; }).join("; ");
+    if (a.neutral.length) s += " | neutral " + a.neutral.map(function (f) { return f.prop + ":" + f.value; }).join("; ");
+    return s;
+  }
+  if (a.kind === "physical-unflippable") return "unflippable " + a.reason;
+  return a.kind;
+}
+function ad(name, prop, value, expect) { check(name, expect, fmtA(R.analyzeDecl(prop, value))); }
+ad("margin-left يصير منطقيًّا مع مصفِّر", "margin-left", "8px", "flip margin-inline-start:8px | neutral margin-left:unset");
+ad("margin المختصرة غير المتناظرة: أربع خانات بلا مصفِّر", "margin", "0 8px 0 0", "flip margin-top:0; margin-inline-end:8px; margin-bottom:0; margin-inline-start:0");
+ad("margin المتناظرة لا شأن للاتجاه بها", "margin", "0 8px", "null");
+ad("border-radius غير المتناظرة: أربع زوايا منطقية", "border-radius", "4px 8px", "flip border-start-start-radius:4px; border-start-end-radius:8px; border-end-end-radius:4px; border-end-start-radius:8px");
+ad("border-radius الإهليلجية لا تُقلب", "border-radius", "4px / 8px", "unflippable radius-elliptical");
+ad("text-align:left تصير start (لا right)", "text-align", "left", "flip text-align:start");
+ad("float:left فيزيائي احتياطًا ثم منطقي", "float", "left", "flip float:right; float:inline-start");
+ad("translateX بقيمة حرفية يُقلب في موضعه", "transform", "translateX(-50%)", "flip transform:translateX(50%)");
+ad("متغيّر الإزاحة السينية يُقلب عند تصريحه بلفّ calc", "--tw-translate-x", "calc(var(--spacing) * -4)", "flip --tw-translate-x:calc(calc(var(--spacing) * -4) * -1)");
+ad("استعمال متغيّر الإزاحة لا يُقلب ثانيةً (لا قلب مزدوج)", "translate", "var(--tw-translate-x) var(--tw-translate-y)", "null");
+ad("var() عارية قد تكون متغيّر تبديل — لا قلب أعمى", "translate", "var(--_prose-noscope) 0 .1em", "unflippable translate-keyword");
+ad("ظلّ بإزاحة سينية يُحصى للطبيب ولا يُقلب", "box-shadow", "2px 4px 6px #000", "unflippable shadow");
+ad("ظلّ بلا إزاحة سينية محايد", "box-shadow", "0 4px 6px #000", "null");
+ad("left تصير inset-inline-start مع مصفِّر", "left", "50%", "flip inset-inline-start:50% | neutral left:unset");
+ad("direction واعية بالاتجاه أصلًا", "direction", "ltr", "logical");
+
+// ===== الطبقة ١/ج: ترتيب flipSheet والقسمان =====
+var FR = [
+  { sel: ".a", decls: [{ prop: "margin-left", value: "8px", important: false }], ctx: [], layer: "components", idx: 0 },
+  { sel: ".b", decls: [{ prop: "margin-right", value: "16px", important: false }], ctx: [], layer: "utilities", idx: 1 },
+];
+var FS = R.flipSheet(FR, { layerOrder: ["components", "utilities"] });
+check("المصفِّرات كلها في قسم neutral", "margin-left:unset,margin-right:unset",
+  FS.neutral.map(function (r) { return r.decls.map(function (d) { return d.prop + ":" + d.value; }).join(";"); }).join(","));
+// العقد الجديد (سلّم التخصيص): المحدِّد الأصلي ملفوف في :where() خلف بادئة المستوى ٣
+check("المنطقيات مرتَّبة برتبة الطبقة (.b بعد .a)", GATE + ":not(#cml0#cml1#cml2) :where(.a) | " + GATE + ":not(#cml0#cml1#cml2) :where(.b)",
+  FS.logical.map(function (r) { return r.sel; }).join(" | "));
+// رتبة الطبقة تغلب موضع القاعدة: نعكس idx ونبقي الطبقات — يجب أن تبقى .a أولًا
+var FS2 = R.flipSheet([
+  { sel: ".b", decls: [{ prop: "margin-right", value: "16px", important: false }], ctx: [], layer: "utilities", idx: 0 },
+  { sel: ".a", decls: [{ prop: "margin-left", value: "8px", important: false }], ctx: [], layer: "components", idx: 1 },
+], { layerOrder: ["components", "utilities"] });
+check("رتبة الطبقة تغلب موضع القاعدة الأصلي", "true", FS2.logical[0].sel.indexOf(":where(.a)") !== -1);
+// مستويا السلّم: المصفِّر (معرِّفان في :not) دون المنطقي (ثلاثة) — بنيويًّا لا ترتيبًا
+check("سلّم التخصيص: مصفِّر ×٢ ومنطقي ×٣", "true",
+  FS.neutral.every(function (r) { return r.sel.indexOf(":not(#cml0#cml1)") !== -1 && r.sel.indexOf("#cml2") === -1; }) &&
+  FS.logical.every(function (r) { return r.sel.indexOf(":not(#cml0#cml1#cml2)") !== -1; }));
+var GS = R.flipSheet([{ sel: GATE + " .x", decls: [{ prop: "margin-left", value: "4px", important: false }], ctx: [], layer: null, idx: 0 }], {});
+check("محدِّد فيه data-cml يُتخطى (مخرجاتنا نحن)", "1/0", GS.stats.gateSkipped + "/" + GS.stats.flipped);
+// الزائف لا يصح داخل :where (المتسامحة تُسقطه فتموت القاعدة) — يبقى خارج اللف،
+// ونقطتا تايلويند المهرَّبتان (\:after داخل الاسم) لا تُحسبان زائفًا
+var PS = R.flipSheet([
+  { sel: ".p:before", decls: [{ prop: "float", value: "left", important: false }], ctx: [], layer: null, idx: 0 },
+  { sel: ".hover\\:after\\:x:hover:after", decls: [{ prop: "margin-left", value: "2px", important: false }], ctx: [], layer: null, idx: 1 },
+]);
+check("الزائف خارج :where والمهرَّب داخله", "true",
+  PS.logical[0].sel.indexOf(":where(.p):before") !== -1 &&
+  PS.logical[1].sel.indexOf(":where(.hover\\:after\\:x:hover):after") !== -1);
+
+// ===== الطبقة ١/ج٢: dirBoost — قواعد المؤلف المشروطة بـRTL تفوز =====
+var DB = R.flipSheet([
+  { sel: '[dir="rtl"] .x', decls: [{ prop: "margin-left", value: "4px", important: false }], ctx: [], layer: null, idx: 0 },
+  { sel: ".y:dir(rtl)", decls: [{ prop: "padding-left", value: "6px", important: false }], ctx: [], layer: null, idx: 1 },
+  { sel: ".z:dir(ltr)", decls: [{ prop: "margin-left", value: "2px", important: false }], ctx: [], layer: null, idx: 2 },
+]);
+check("الواعية بالاتجاه تُحصى كلها (dirAware)", "3", DB.stats.dirAware);
+check("المشروطة بـRTL وحدها تُعزَّز (dirBoosted)", "2/2", DB.stats.dirBoosted + "/" + DB.dirBoost.length);
+check("المعزَّزة تُنسخ حرفيًّا خلف البوابة بلا قلب (مستوى ٤)", GATE + ':not(#cml0#cml1#cml2#cml3) :where([dir="rtl"] .x){margin-left:4px}',
+  DB.dirBoost[0].sel + "{" + DB.dirBoost[0].decls[0].prop + ":" + DB.dirBoost[0].decls[0].value + "}");
+check("المشروطة بـLTR تُترك: لا قلب ولا تعزيز", "true",
+  DB.stats.flipped === 0 && DB.logical.length === 0 && DB.dirBoost.every(function (r) { return r.sel.indexOf(".z") === -1; }));
+
+// ===== الطبقة ١/د: العقم — مخرجاتنا لا تُقلب ثانية =====
+var IP1 = R.parseCss('.a{margin-left:8px}.b{margin:0 8px 0 0}[dir="rtl"] .c{margin-left:4px}');
+var IS1 = R.flipSheet(IP1.rules, { layerOrder: IP1.layerOrder });
+var CSS2 = R.serializeRules(IS1.neutral) + "\n" + R.serializeRules(IS1.logical) + "\n" + R.serializeRules(IS1.dirBoost);
+var IP2 = R.parseCss(CSS2);
+var IS2 = R.flipSheet(IP2.rules, { layerOrder: IP2.layerOrder });
+check("إعادة قلب الناتج: لا قلب ولا تعزيز", "0/0", IS2.stats.flipped + "/" + IS2.stats.dirBoosted);
+check("كل قواعد الناتج تُتخطى بالبوابة", String(IP2.rules.length), IS2.stats.gateSkipped);
+
+// ===== الطبقة ١/هـ: ثبات مفتاح التغطية =====
+var K1 = R.coverageKey([], ".ml-2", "margin-left"), K2 = R.coverageKey([], ".ml-2", "margin-left");
+check("مفتاح التغطية ثابت وست عشري بثمانية أحرف", "true", K1 === K2 && /^[0-9a-f]{8}$/.test(K1));
+
+// ===== الطبقة ٢: التكامل مع مسار التوليد الحقيقي =====
+// البوابة والاتجاه على جذر الصفحة نفسها — قبل أي قراءة أنماط محسوبة
+document.documentElement.setAttribute("dir", "rtl");
+document.documentElement.setAttribute("data-cml-rtl", "v2");
+
+// نحاكي الواقع: أنماط الموقع الأصلية تبقى محمّلة، ومولَّدُنا يعلوها بمسار التوليد نفسه
+var FIX = ".fx-ml{margin-left:8px}.fx-mr{margin-right:16px}.fx-left{left:12px;position:absolute}.fx-ta{text-align:left}";
+var FP = R.parseCss(FIX);
+var FF = R.flipSheet(FP.rules, { layerOrder: FP.layerOrder });
+var stBase = document.createElement("style"); stBase.textContent = FIX; document.head.appendChild(stBase);
+var stGen = document.createElement("style");
+stGen.textContent = R.serializeRules(FF.neutral) + "\n" + R.serializeRules(FF.logical);
+document.head.appendChild(stGen);
+function cs(id) { return getComputedStyle(document.getElementById(id)); }
+
+// (و) ضمانة القسمين: عنصر جامع لصنفين لا تتصادم خاناته
+check("★ صنفان معًا: margin-inline-start من fx-ml تصير يمينًا", "8px", cs("fxCompose").marginRight);
+check("★ صنفان معًا: margin-inline-end من fx-mr تصير يسارًا", "16px", cs("fxCompose").marginLeft);
+// (ز) left المطلقة تصير inset-inline-start فتُحسب يمينًا
+check("★ left:12px تصير يمينًا في RTL", "12px", cs("fxAbs").right);
+check("left لم تعد 12px (صُفِّرت)", "true", cs("fxAbs").left !== "12px");
+// (ح) text-align:start في سياق RTL
+var ta = cs("fxTa").textAlign;
+check("text-align:left تُحسب start/يمينًا في RTL", "true", ta === "right" || ta === "start");
+// (ط) جزيرة LTR: نفس الصنف داخل pre يعود يساره من تلقائه (جزر الملف الحقيقي)
+check("★ داخل pre: الهامش يعود يسارًا انبثاقًا", "8px", cs("fxIsland").marginLeft);
+check("داخل pre: لا هامش يمينًا", "0px", cs("fxIsland").marginRight);
+// (ي) dir=auto بنص إنجليزي يحسم LTR فيعود الهامش يسارًا
+check("★ dir=auto إنجليزية: الهامش يسارًا", "8px", cs("fxAutoChild").marginLeft);
+check("dir=auto إنجليزية: لا هامش يمينًا", "0px", cs("fxAutoChild").marginRight);
+// (ك) السطري المحسوب بجافاسكربت لا يُمسّ: يغلب مصفِّرنا غير المهم
+check("★ style=left:10px السطري يبقى (لا !important فوقه)", "10px", cs("fxInline").left);
+// (ل) بلا بوابة الملف خامل حرفيًّا — ثم تعود بعودتها
+document.documentElement.removeAttribute("data-cml-rtl");
+void document.documentElement.offsetHeight; // إجبار إعادة حساب
+check("★ نزع البوابة: الهامش يعود يسارًا", "8px", cs("fxGate").marginLeft);
+check("نزع البوابة: لا هامش يمينًا", "0px", cs("fxGate").marginRight);
+document.documentElement.setAttribute("data-cml-rtl", "v2");
+void document.documentElement.offsetHeight;
+check("إعادة البوابة: يعود القلب", "8px", cs("fxGate").marginRight);
+// (ن) إصلاح base النقطي بـ!important يبقى الطبقة الأخيرة فوق المولَّد
+var stPf = document.createElement("style");
+stPf.textContent = GATE + ' .fx-pf{margin-inline-start:8px}\n' +
+  'html[data-cml="on"][dir="rtl"] .fx-pf{margin-left:4px !important}';
+document.head.appendChild(stPf);
+document.documentElement.setAttribute("data-cml", "on");
+void document.documentElement.offsetHeight;
+check("★ إصلاح نقطي بـ!important يغلب المولَّد", "4px", cs("fxPf").marginLeft);
+document.documentElement.removeAttribute("data-cml");
+
+// ===== الطبقة ٢/م: دخان الناتج المولَّد الحقيقي =====
+fetch("../extension/rtl-overrides.css")
+  .then(function (r) { return r.text(); })
+  .then(function (txt) {
+    check("بصمات التغطية بالعدد المتوقع (≥500)", "true", window.CMLRtlCoverage && window.CMLRtlCoverage.keys.length >= 500);
+    var ag = txt.indexOf("AUTO-GENERATED");
+    check("الملف يبدأ بتعليق AUTO-GENERATED", "true", txt.lastIndexOf("/*", 0) === 0 && ag !== -1 && ag < txt.indexOf("*/"));
+    var RP = R.parseCss(txt);
+    check("تحليل الملف الحقيقي بلا أخطاء", "0", RP.stats.parseErrors);
+    var bad = 0;
+    for (var i = 0; i < RP.rules.length; i++) if (RP.rules[i].sel.indexOf(GATE) !== 0) bad++;
+    check("★ كل قاعدة في الملف الحقيقي خلف البوابة", "0", bad);
+    check("حجم الملف الحقيقي معقول (≥100 قاعدة)", "true", RP.rules.length >= 100);
+    check("لا أخطاء جافاسكربت في الصفحة", "0", window.__jsErrors);
+    finish();
+  })
+  .catch(function (e) {
+    check("جلب rtl-overrides.css عبر الخادم", "نجح", "فشل: " + e);
+    finish();
+  });
+
+function finish() {
+  document.title = "rtltest " + pass + "/" + total;
+  var h = document.createElement("p");
+  h.className = pass === total ? "ok" : "bad";
+  h.textContent = "RTLTEST: " + pass + "/" + total + (pass === total ? " — all pass" : " — FAIL");
+  document.body.appendChild(h);
+}
+</script>

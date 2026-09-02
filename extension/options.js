@@ -1,7 +1,8 @@
 /* options.js — settings page for تعريب كلود للويب (Arabic-only).
    Wires the UI to chrome.storage.local. No network.
    Keys: cml_enabled, cml_rtl, cml_chatrtl, cml_overrides, cml_user_patterns,
-         cml_scan_request, cml_scan_result, cml_scan_cancel, cml_scan_claim. */
+         cml_scan_request, cml_scan_result, cml_scan_cancel, cml_scan_claim,
+         cml_rtl_engine, cml_rtldoc_request, cml_rtldoc_result. */
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
@@ -697,6 +698,156 @@
     });
   }
 
+  // ---------- الاتجاه (RTL): اختيار المحرّك + طبيب الاتجاه ----------
+  // المحرّك الجذري v2 هو الافتراضي، فاختيارُه لا يُخزَّن قيمةً بل بمحو المفتاح —
+  // على سنّة cml_rtl ونظائره: غيابُ المفتاح افتراضٌ، ووجودُه اختيارٌ صريح للبديل.
+  // فلو خزّنّا "v2" صراحةً لتجمّد من اختاره على قيمةٍ قديمة إن بدّلنا الافتراضي يومًا.
+  function loadRtlEngine() {
+    if (!$("rtlEngineV2")) return; // صفحة اختبار بلا قسم الاتجاه
+    get([CMLConst.K.RTL_ENGINE], function (s) {
+      var v1 = s[CMLConst.K.RTL_ENGINE] === "v1";
+      $("rtlEngineV1").checked = v1;
+      $("rtlEngineV2").checked = !v1;
+    });
+  }
+  function setRtlEngine(v) {
+    if (v === "v1") {
+      var patch = {};
+      patch[CMLConst.K.RTL_ENGINE] = "v1";
+      set(patch, function (err) {
+        if (err) { flash($("rtlEngineStatus"), "تعذّر الحفظ."); return; }
+        flash($("rtlEngineStatus"), "اختير النقطي v1 — يسري فورًا على تبويبات claude.ai المفتوحة.");
+      });
+    } else {
+      chrome.storage.local.remove(CMLConst.K.RTL_ENGINE, function () {
+        flash($("rtlEngineStatus"), "عاد الجذري v2 (الافتراضي) — يسري فورًا على تبويبات claude.ai المفتوحة.");
+      });
+    }
+  }
+
+  // طبيب الاتجاه يجري داخل صفحة claude.ai (runRtlDoc في المحرّك) لأنه وحده يقرأ ملفات
+  // تنسيق الموقع. التخاطب كمخاطبة فحص الترجمة سواء بسواء: cml_rtldoc_request طلبًا
+  // (على session فيُمحى بإغلاق المتصفح) وcml_rtldoc_result نتيجةً على local.
+  // والطبيب يقتسم حجز cml_scan_claim مع فحص الترجمة فلا يجريان معًا ولا طبيبان متوازيان.
+  var rtlDocTimer = null, rtlDocWaited = 0;
+
+  function renderRtlDoc(r) {
+    var cnt = $("rtlDocCount"), st = $("rtlDocStatus"), box = $("rtlDocBox");
+    if (!cnt || !st) return; // صفحة اختبار بلا قسم الاتجاه
+    cnt.style.color = "";
+    if (!r || !r.status) { cnt.textContent = "لم يُجرَ فحص بعد"; return; }
+    if (r.status === "running") {
+      // نبض متوقّف ⇒ مات الفاحص (أُغلق تبويب claude.ai مثلًا) — كقاعدة فحص الترجمة:
+      // بدون هذا المخرج تبقى الصفحة على «جارٍ الفحص…» أبدًا والزر معطّلًا بلا استرداد.
+      if (!r.at || Date.now() - r.at > CMLConst.HEARTBEAT_STALL_MS) {
+        cnt.textContent = "انقطع الفحص";
+        st.textContent = "توقّف بعد قراءة " + (r.fetched || 0) + " ملفًا — غالبًا أُغلق تبويب claude.ai أو أُعيد تحميل الإضافة. افتح claude.ai وحدّث الصفحة ثم أعد الفحص.";
+        $("startRtlDoc").disabled = false;
+        if (rtlDocTimer) { clearInterval(rtlDocTimer); rtlDocTimer = null; }
+        return;
+      }
+      cnt.textContent = "جارٍ الفحص…";
+      st.textContent = "قرأ " + (r.fetched || 0) + " ملف تنسيق…";
+      // صفحة فُتحت من جديد أثناء فحص جارٍ: الزر معطَّل والاستطلاع مستأنَف — كالفحص أعلاه
+      $("startRtlDoc").disabled = true;
+      if (!rtlDocTimer) { rtlDocWaited = 0; rtlDocTimer = setInterval(pollRtlDoc, 1000); }
+      return;
+    }
+    if (rtlDocTimer) { clearInterval(rtlDocTimer); rtlDocTimer = null; }
+    $("startRtlDoc").disabled = false;
+    if (r.status === "error") {
+      cnt.textContent = "تعذّر الفحص";
+      st.textContent = r.error || "حدث خطأ.";
+      if (box) box.classList.add("hidden");
+      return;
+    }
+    // done
+    $("startRtlDoc").textContent = "أعد فحص الاتجاه";
+    var unc = r.uncovered || 0;
+    var shown = (r.list || []).length;
+    if (unc) {
+      cnt.textContent = unc + " إعلانًا لا يقلبه المحرّك بعدُ";
+    } else {
+      cnt.textContent = "✓ كل ما في الموقع مغطًّى";
+      cnt.style.color = "var(--ok)";
+    }
+    var msg = "فُحص " + (r.files || 0) + " ملفًا وفيها " + (r.rules || 0) + " قاعدة، منها " +
+      (r.physical || 0) + " إعلانًا فيزيائيًّا (يذكر يمينًا أو يسارًا): المغطّى " + (r.covered || 0) +
+      " وغيرُ المغطّى " + unc + (unc && shown < unc ? " (يُعرض أول " + shown + ")" : "") +
+      "، في " + (r.seconds || 0) + " ثانية.";
+    // إخفاق الجلب يعني نتيجةً ناقصة — والسكوت عنه يجعل «تمّ» يبدو اكتمالًا وليس به
+    if (r.failed) msg += " ⚠ تعذّر جلب " + r.failed + " ملفًا فالنتيجة ناقصة — أعد الفحص.";
+    // الأنماط السطرية تُذكر ولا تُعدّ نقصًا: تركُها مبدأٌ في المحرّك لا سهوٌ — فالمحرّك
+    // يقلب أصناف التنسيق وحدها، والمواضع التي تحسبها سكربتات الموقع بنفسها لا تُمسّ.
+    msg += " وفي الأنماط السطرية " + (r.inlinePhysical || 0) + " إعلانًا فيزيائيًّا من " +
+      (r.inlineChecked || 0) + " عنصرًا مفحوصًا — وهذه لا يمسّها المحرّك عمدًا.";
+    // لا تدهس رسالة flash نشطة (تأكيد تنزيل مثلًا) — الملخص يبقى متاحًا في العدّاد
+    if (!st.dataset.flashing) st.textContent = msg;
+    if (!box) return;
+    if (!unc) { box.classList.add("hidden"); return; }
+    var listEl = $("rtlDocList");
+    listEl.innerHTML = "";
+    (r.list || []).forEach(function (x) {
+      var d = document.createElement("div");
+      d.className = "ditem";
+      d.textContent = x.sel + " — " + x.prop;
+      listEl.appendChild(d);
+    });
+    box.classList.remove("hidden");
+  }
+
+  function pollRtlDoc() {
+    rtlDocWaited += 1;
+    get([CMLConst.K.RTLDOC_RESULT], function (s) {
+      var r = s[CMLConst.K.RTLDOC_RESULT];
+      if (r) { renderRtlDoc(r); return; }
+      // المحرّك يكتب {status:"running"} فور استلام الطلب. فبلوغُ المهلة بلا أي نتيجة يعني
+      // قطعًا أن لا سكربت حيّ في أي تبويب claude.ai — كقاعدة فحص الترجمة سواء بسواء.
+      if (rtlDocWaited >= 20) {
+        clearInterval(rtlDocTimer); rtlDocTimer = null;
+        $("startRtlDoc").disabled = false;
+        $("rtlDocCount").textContent = "لم يصل الطلب";
+        $("rtlDocStatus").innerHTML =
+          "لم يستجب أي تبويب. الأرجح أن تبويب claude.ai مفتوح منذ ما قبل تحديث الإضافة، فسكربتها فيه منفصل. " +
+          "<b>الحل:</b> افتح تبويب claude.ai واضغط <b>Ctrl+Shift+R</b> (تحديث كامل) وانتظر اكتمال تحميل الصفحة، ثم عُد هنا واضغط «ابدأ فحص الاتجاه». " +
+          "وإن لم يكن التبويب مفتوحًا أصلًا فافتحه أولًا.";
+      }
+    });
+  }
+
+  function startRtlDoc() {
+    // الحجز المشترك مع فحص الترجمة: لا نُطلق الطبيب وفحصٌ حيٌّ يعمل الآن — القناة واحدة.
+    SESS.get(["cml_scan_claim"], function (s) {
+      var c = s.cml_scan_claim;
+      if (c && c.id && c.at && Date.now() - c.at < CMLConst.CLAIM_STALE_MS) {
+        $("rtlDocStatus").textContent = "يوجد فحص جارٍ الآن (فحص الموقع أو الاتجاه) — انتظر انتهاءه ثم أعد المحاولة.";
+        return;
+      }
+      $("startRtlDoc").disabled = true;
+      $("rtlDocStatus").textContent = "أُرسل الطلب… تأكد أن تبويب claude.ai مفتوح.";
+      if ($("rtlDocBox")) $("rtlDocBox").classList.add("hidden");
+      var patch = {};
+      patch[CMLConst.K.RTLDOC_RESULT] = null;
+      set(patch);
+      var req = {};
+      req[CMLConst.K.RTLDOC_REQUEST] = { at: Date.now() };
+      try { SESS.set(req); } catch (e) {}
+      rtlDocWaited = 0;
+      if (rtlDocTimer) clearInterval(rtlDocTimer);
+      rtlDocTimer = setInterval(pollRtlDoc, 1000);
+    });
+  }
+
+  // النتيجة كاملة (بالقيم وغير القابل للقلب) تُنزَّل ملفًا — للإرفاق بمسألة على المستودع
+  function exportRtlDoc() {
+    get([CMLConst.K.RTLDOC_RESULT], function (s) {
+      var r = s[CMLConst.K.RTLDOC_RESULT];
+      if (!r || r.status !== "done") { flash($("rtlDocStatus"), "لا نتيجة للتنزيل — شغّل فحص الاتجاه أولًا."); return; }
+      download("طبيب-الاتجاه-كلود.json", JSON.stringify({ _app: "claude-mutarjim", _kind: "rtl-doctor", result: r }, null, 2));
+      flash($("rtlDocStatus"), "نُزّلت النتيجة كاملة ✓");
+    });
+  }
+
   // ---------- reset ----------
   function resetAll() {
     if (!confirm("إعادة ضبط كل الإعدادات وحذف كلماتك المحفوظة؟ لا يمكن التراجع.")) return;
@@ -712,6 +863,8 @@
       renderTerms();
     });
     get(["cml_scan_result"], function (s) { renderScan(s.cml_scan_result); });
+    get([CMLConst.K.RTLDOC_RESULT], function (s) { renderRtlDoc(s[CMLConst.K.RTLDOC_RESULT]); });
+    loadRtlEngine();
     renderRecon();   // مراجعة ما بعد التحديث: تظهر وحدها متى كان ثمة ما يُراجَع
   }
 
@@ -748,6 +901,15 @@
 
     $("startScan").addEventListener("click", startScan);
     $("cancelScan").addEventListener("click", stopScan);
+
+    // قسم الاتجاه (RTL): الحُرّاس على سنّة $("rtl") أعلاه — قشور الاختبار بلا هذا القسم
+    if ($("rtlEngineV2")) {
+      $("rtlEngineV2").addEventListener("change", function () { if ($("rtlEngineV2").checked) setRtlEngine("v2"); });
+      $("rtlEngineV1").addEventListener("change", function () { if ($("rtlEngineV1").checked) setRtlEngine("v1"); });
+    }
+    if ($("startRtlDoc")) $("startRtlDoc").addEventListener("click", startRtlDoc);
+    if ($("rtlDocExport")) $("rtlDocExport").addEventListener("click", exportRtlDoc);
+
     $("scanExport").addEventListener("click", exportScan);
     $("scanImportBtn").addEventListener("click", function () { $("importTransFile").click(); });
     $("importTransFile").addEventListener("change", function (e) {
@@ -780,6 +942,9 @@
         if (area !== "local") return;
         if (ch.cml_overrides) renderOrDefer("termsList", renderTerms);
         if (ch.cml_scan_result) renderScan(ch.cml_scan_result.newValue);
+        if (ch[CMLConst.K.RTLDOC_RESULT]) renderRtlDoc(ch[CMLConst.K.RTLDOC_RESULT].newValue);
+        // بدّلته نافذة منبثقة أو «إعادة الضبط» ⇒ ينعكس اختيار المحرّك هنا فورًا
+        if (ch[CMLConst.K.RTL_ENGINE]) loadRtlEngine();
       });
     } catch (e) {}
 

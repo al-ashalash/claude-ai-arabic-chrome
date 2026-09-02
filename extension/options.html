@@ -94,6 +94,16 @@
     .icon-btn { border:none; background:transparent; font-size:16px; cursor:pointer; padding:4px 8px; color:var(--mut); }
     .icon-btn:hover { color:var(--fg); }
     .modal-list { max-height:46vh; overflow:auto; margin-top:4px; }
+    /* قسم الاتجاه (RTL): خيارا المحرّك، وقائمة «طبيب الاتجاه» */
+    .engopt { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-top:1px solid var(--line); cursor:pointer; }
+    .engopt:first-child { border-top:none; }
+    /* أزرار الاختيار تسلم من قاعدة input العامة (حاشية وإطار يشوّهانها) */
+    .engopt input { width:16px; height:16px; margin:3px 0 0; padding:0; border:none; background:none; flex:none; accent-color:var(--brand); }
+    .engopt b { display:block; }
+    .engopt .why { display:block; color:var(--mut); font-size:12.5px; }
+    .doclist { max-height:240px; overflow:auto; border:1px solid var(--line); border-radius:8px; padding:4px 10px; margin-top:8px; }
+    .doclist .ditem { padding:5px 0; border-top:1px solid var(--line); font-size:12px; direction:ltr; text-align:start; unicode-bidi:plaintext; word-break:break-all; }
+    .doclist .ditem:first-child { border-top:none; }
   </style>
 </head>
 <body>
@@ -260,6 +270,53 @@
       <div class="status" id="scanStatus" role="status" aria-live="polite"></div>
     </section>
 
+    <!-- الاتجاه (RTL): اختيار المحرّك + «طبيب الاتجاه» شقيق فحص الموقع أعلاه -->
+    <section class="card">
+      <h2>الاتجاه من اليمين لليسار (RTL)</h2>
+      <p class="desc">
+        قلبُ الاتجاه يعمل بأحد محرّكين، واختيارُك يسري فورًا على تبويبات claude.ai المفتوحة
+        — متى كان «قلب اتجاه الصفحة (RTL)» مفعّلًا في «عام» أعلاه:
+      </p>
+      <div id="rtlEngineBox">
+        <label class="engopt">
+          <input type="radio" name="rtlEngine" id="rtlEngineV2" value="v2" aria-describedby="rtlEngineV2Why">
+          <span><b>الجذري v2 (الافتراضي)</b>
+            <span class="why" id="rtlEngineV2Why">يقلب أصناف تنسيق الموقع كلها إلى خصائص منطقية فتنعكس الواجهة انعكاسًا شاملًا، مع بقاء الشيفرة والمقتطفات جزرًا LTR.</span></span>
+        </label>
+        <label class="engopt">
+          <input type="radio" name="rtlEngine" id="rtlEngineV1" value="v1" aria-describedby="rtlEngineV1Why">
+          <span><b>النقطي v1 (توافق)</b>
+            <span class="why" id="rtlEngineV1Why">يبقي الإصلاحات اليدوية القليلة وحدها — اختره فقط إن ساءت شاشة بعد تحديث للموقع.</span></span>
+        </label>
+      </div>
+      <div class="status" id="rtlEngineStatus" role="status" aria-live="polite"></div>
+
+      <h3 style="font-size:14px;margin:10px 0 4px;padding-top:12px;border-top:1px solid var(--line)">طبيب الاتجاه</h3>
+      <p class="desc">
+        يفحص تنسيقات الموقع الحية ويكشف ما استجدّ منها ولا يقلبه محرّك الاتجاه بعدُ —
+        شقيق «فحص الموقع» أعلاه.
+      </p>
+      <p class="desc" style="color:#8a5a2b">
+        افتح تبويب <b>claude.ai</b> واتركه مفتوحًا، ثم اضغط «ابدأ فحص الاتجاه». يستغرق ثوانيَ معدودة.
+      </p>
+      <div class="row" style="border:none;padding-top:2px">
+        <span class="count" id="rtlDocCount">لم يُجرَ فحص بعد</span>
+        <button class="primary" id="startRtlDoc">ابدأ فحص الاتجاه</button>
+      </div>
+      <div class="status" id="rtlDocStatus" role="status" aria-live="polite"></div>
+      <div class="hidden" id="rtlDocBox">
+        <div class="doclist" id="rtlDocList"></div>
+        <p class="desc" style="margin-top:6px">
+          هذه القائمة تعني أن الموقع حدّث تنسيقاته، وأن تحديثًا قادمًا للإضافة سيلمّها —
+          وإلى حينه تبقى هذه المواضع وحدها بلا قلب وسائرُ الواجهة منقلبة كما ينبغي.
+          وإن أحببت الإسهام فأرفق النتيجة بمسألة على مستودع المشروع.
+        </p>
+        <div class="btnrow" style="margin-top:6px">
+          <button id="rtlDocExport">تنزيل النتيجة كاملة (JSON)</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card danger">
       <h2>إعادة الضبط</h2>
       <p class="desc">يحذف كل إعداداتك وتصحيحاتك والقواعد الذكية ونتيجة الفحص، ويعيد كل شيء لحالته الأولى. لا يمكن التراجع.</p>
@@ -277,6 +334,7 @@
       <p class="privacy"><b>كيف تعمل بالضبط:</b> تطابق الإضافة نصوص الواجهة بقاموس مضمَّن داخلها، فإن وجدت للنصّ ترجمةً كتبتها مكانه، وإلّا تركته كما هو. فهي تكتب <b>داخل</b> الصفحة ولا تأخذ منها شيئًا.</p>
       <p class="privacy"><b>ولا تخزّن شيئًا مما يظهر على شاشتك ولا ترسله إلى أي جهة</b> — لا عناوين محادثاتك، ولا أسماء مشاريعك، ولا نصوص رسائلك. ونصّ المحادثات مستثنًى من الترجمة أصلًا فلا تلمسه. ولا اتصال بأي خادم إطلاقًا.</p>
       <p class="privacy">«تحديث المصدر — فحص الموقع» يجري <b>بضغطة منك وحدك</b>، ولا يقرأ إلا <b>ملفات claude.ai العامة</b> — وهي نفسها التي ينزّلها متصفحك لعرض الصفحة — ليستخرج منها نصوص الواجهة ويعرف ما لم يُترجَم. لا يمسّ صفحتك ولا محتواك، ولا يتصل بغير موقع claude.ai، والنتيجة تبقى على جهازك.</p>
+      <p class="privacy"><b>محرّك الاتجاه الجذري</b> يقلب أصناف تنسيق الموقع إلى خصائص CSS منطقية مولَّدة آليًا ومضمَّنة في ملفات الإضافة، و«طبيب الاتجاه» يجري بضغطة منك وحدك فيقرأ <b>ملفات التنسيق العامة نفسها</b> ليكشف ما استجدّ منها ولم يُقلب بعد. ولا شيء من ذلك يقرأ محتوى محادثاتك أو يرسله إلى أي جهة — فالأمر كله تنسيقُ عرضٍ يُطبَّق داخل صفحتك، ونتيجةُ الطبيب تبقى على جهازك.</p>
       <p class="privacy">الصلاحية الوحيدة التي تطلبها الإضافة هي <code>storage</code>، ووظيفتها حفظ تفضيلاتك وكلماتك على جهازك وحده. ولا تطلب صلاحية قراءة بياناتك في المواقع، ولا صلاحية الشبكة، ولا غيرهما.</p>
       <p class="privacy"><b>🛡 ماذا يحدث لترجماتك عند تحديث الإضافة؟</b> <b>لا شيء — تبقى كما هي.</b> تصحيحاتك وترجماتك محفوظة في تخزين متصفحك لا في ملفات الإضافة، والتحديث يستبدل الملفات ولا يمسّ التخزين. ولا يوجد في هذه الإضافة سطرٌ واحد يحذف تصحيحًا إلا بضغطة صريحة منك («احذف كل تصحيحاتك» أو «إعادة الضبط»).<br>
         وتصحيحك <b>يحلّ محلّ القاموس دائمًا</b> — فلو ترجمتَ نصًّا ثم جاء التحديث بترجمة له، بقيت ترجمتُك أنت هي الظاهرة. ولئلا يظلّ تصحيحك مُظلِّلًا تحسينًا لاحقًا وأنت لا تدري، تظهر لك بعد التحديث لوحةُ <b>«تصحيحاتك بعد تحديث الإضافة»</b> في «قاموس التعريب» أعلاه: تعرض ما صار مطابقًا للقاموس (فلا فائدة منه) وما يخالفه (فالقرار قرارك)، ولا تحذف شيئًا إلا بأمرك.<br>

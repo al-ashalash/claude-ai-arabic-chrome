@@ -24,10 +24,13 @@
       "js": [
         "cml-const.js",
         "cml-shared.js",
+        "cml-rtl.js",
+        "rtl-coverage.js",
         "dictionary.js",
         "engine.js"
       ],
       "css": [
+        "rtl-overrides.css",
         "base.css"
       ],
       "run_at": "document_start",

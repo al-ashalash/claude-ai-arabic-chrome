@@ -29,15 +29,12 @@ td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
 <script src="../extension/cml-const.js"></script>
   <script src="../extension/cml-shared.js"></script>
   <script src="../extension/dictionary.js"></script>
+<script src="_chrome-mock.js"></script>
 <script>
-// قشرة chrome.storage وهمية: نبدأ بالترجمة واتجاه المحادثة مفعّلين
-window.chrome = { storage: { local: {
-  _d: { cml_enabled: true, cml_chatrtl: true, cml_rtl: true },
-  get: function (k, cb) { var o = {}; (Array.isArray(k) ? k : [k]).forEach(function (x) { if (this._d[x] !== undefined) o[x] = this._d[x]; }, this); cb(o); },
-  set: function (o, cb) { Object.assign(this._d, o); (this._listeners || []).forEach(function (fn) {
-        var ch = {}; Object.keys(o).forEach(function (k) { ch[k] = { newValue: o[k] }; }); fn(ch, "local"); }); if (cb) cb(); },
-  remove: function (k, cb) { if (cb) cb(); },
-}, onChanged: { addListener: function (fn) { (chrome.storage.local._listeners = chrome.storage.local._listeners || []).push(fn); } } } };
+// القشرة الموحّدة: نبدأ بالترجمة واتجاه المحادثة مفعّلين
+var MOCK = makeChromeMock({ session: false });
+Object.assign(MOCK.localStore, { cml_enabled: true, cml_chatrtl: true, cml_rtl: true });
+window.chrome = MOCK.chrome;
 </script>
 <script src="../extension/engine.js"></script>
 <script>

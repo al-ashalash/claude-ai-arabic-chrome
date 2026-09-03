@@ -16,24 +16,12 @@
   <!-- الملف الوحيد المعروف مسبقًا؛ الباقي يُكتشف بقراءة محتواه -->
   <script src="assets/v1/index-abc123def.js"></script>
 
+  <script src="_chrome-mock.js"></script>
   <script>
-    // قشرة chrome.storage تُشغّل الفحص وتلتقط نتيجته
-    window.__store = {};
-    window.__listeners = [];
-    window.chrome = {
-      storage: {
-        local: {
-          get: function (keys, cb) { cb(Object.assign({}, window.__store)); },
-          set: function (obj, cb) {
-            var ch = {};
-            for (var k in obj) { ch[k] = { newValue: obj[k] }; window.__store[k] = obj[k]; }
-            window.__listeners.forEach(function (fn) { try { fn(ch, "local"); } catch (e) {} });
-            if (cb) cb();
-          },
-        },
-        onChanged: { addListener: function (fn) { window.__listeners.push(fn); } },
-      },
-    };
+    // القشرة الموحّدة تُشغّل الفحص وتلتقط نتيجته (بلا session: يسقط المحرّك إلى local)
+    var MOCK = makeChromeMock({ session: false });
+    window.__store = MOCK.localStore;
+    window.chrome = MOCK.chrome;
   </script>
   <script src="../extension/cml-const.js"></script>
   <script src="../extension/cml-shared.js"></script>

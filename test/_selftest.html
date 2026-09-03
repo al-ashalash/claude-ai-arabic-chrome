@@ -66,40 +66,21 @@
   </div>
   <div id="ruleResult" style="margin-top:12px;font-weight:bold"></div>
 
+  <script src="_chrome-mock.js"></script>
   <script>
-    // قشرة تخزين كاملة: تخزّن وتُبلّغ المستمعين كما يفعل كروم — لاختبار السلوك الحي.
+    // القشرة الموحّدة (بلا session: هذه الصفحة تختبر سلوكيات local وحدها كما كانت).
     // ملاحظة: لا يوجد أي مفتاح رصد — أُزيلت الميزة في 1.0.20.
-    window.__store = { cml_purge_probe: 1, cml_collect: true, cml_collected: { "old": 1 } };
-    window.__removed = [];
-    window.__listeners = [];
-    window.chrome = {
-      storage: {
-        local: {
-          get: function (keys, cb) {
-            var out = {};
-            (Array.isArray(keys) ? keys : [keys]).forEach(function (k) { if (k in window.__store) out[k] = window.__store[k]; });
-            cb(out);
-          },
-          set: function (obj, cb) {
-            var ch = {};
-            for (var k in obj) { ch[k] = { newValue: obj[k] }; window.__store[k] = obj[k]; }
-            window.__listeners.forEach(function (fn) { try { fn(ch, "local"); } catch (e) {} });
-            if (cb) cb();
-          },
-          remove: function (keys, cb) {
-            (Array.isArray(keys) ? keys : [keys]).forEach(function (k) { window.__removed.push(k); delete window.__store[k]; });
-            if (cb) cb();
-          },
-        },
-        onChanged: { addListener: function (fn) { window.__listeners.push(fn); } },
-      },
-    };
+    var MOCK = makeChromeMock({ session: false });
+    Object.assign(MOCK.localStore, { cml_purge_probe: 1, cml_collect: true, cml_collected: { "old": 1 } });
+    window.__store = MOCK.localStore;
+    window.__removed = MOCK.localRemoved;
+    window.chrome = MOCK.chrome;
     // يحاكي ما يفعله «استيراد الترجمات» من صفحة الإعدادات
     window.__applyOverrides = function (map) {
-      window.__listeners.forEach(function (fn) { try { fn({ cml_overrides: { newValue: { ar: map } } }, "local"); } catch (e) {} });
+      MOCK.fireChanged({ cml_overrides: { newValue: { ar: map } } }, "local");
     };
     window.__applyPatterns = function (arr) {
-      window.__listeners.forEach(function (fn) { try { fn({ cml_user_patterns: { newValue: arr } }, "local"); } catch (e) {} });
+      MOCK.fireChanged({ cml_user_patterns: { newValue: arr } }, "local");
     };
   </script>
   <script src="../extension/cml-const.js"></script>
@@ -140,7 +121,7 @@
       mEl.parentNode.appendChild(migLine);
 
       var total = pass + mpass, max = rows.length + mchecks.length;
-      document.title = 'selftest ' + total + '/' + max;
+      document.title = 'selftest ' + total + '/' + max + ' …'; // وسطية — لا يطابقها مشغّل CDP
 
       // ===== القواعد الذكية: أنماط وَلّدها الاستيراد من نصوص فيها متغيّرات =====
       // هذه بالضبط ما تنتجه makePattern في options.js
@@ -159,7 +140,7 @@
         });
         mEl.textContent = 'RULES: ' + rpass + '/' + rrows.length + (rfails.length ? ' | FAIL: ' + rfails.join(' ; ') : ' — all pass');
         total += rpass; max += rrows.length;
-        document.title = 'selftest ' + total + '/' + max;
+        document.title = 'selftest ' + total + '/' + max + ' …'; // وسطية — لا يطابقها مشغّل CDP
         runLive();
       }, 600);
 
@@ -183,7 +164,7 @@
             'live revert: recentsItem = ' + document.getElementById('recentsItem').textContent.trim());
 
           // ===== إيقاف الترجمة يجب أن يُرجع الإنجليزية بلا تحديث الصفحة =====
-          var fire = function (ch) { window.__listeners.forEach(function (fn) { try { fn(ch, 'local'); } catch (e) {} }); };
+          var fire = function (ch) { MOCK.fireChanged(ch, 'local'); };
           fire({ cml_enabled: { newValue: false } });
           setTimeout(function () {
             check(document.getElementById('recentsItem').textContent.trim() === 'Recents',

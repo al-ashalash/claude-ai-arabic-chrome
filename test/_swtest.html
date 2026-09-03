@@ -36,30 +36,9 @@ td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
 // عدّاد الأخطاء غير الملتقطة — يُثبَّت قبل تحميل أي شيء ليصطاد أخطاء المحرّك أيضًا
 var jsErrors = 0;
 window.onerror = function () { jsErrors++; };
-
-// ===== قشرة chrome: local + session (بوجود session يسلك المحرّك مسلك الإنتاج) =====
-var __localStore = {}, __sessStore = {};
-var __localWrites = [], __sessWrites = [];
-var __storeListeners = [];
-var __onLocalWrite = null; // خطّاف اختبار ١٣: يُستدعى عند كل كتابة local (محاكاة موت العامل في منتصف الزحف)
-function makeArea(store, writes, areaName) {
-  return {
-    get: function (keys, cb) { cb(Object.assign({}, store)); },
-    set: function (obj, cb) {
-      var ch = {};
-      for (var k in obj) { ch[k] = { newValue: obj[k] }; store[k] = obj[k]; }
-      writes.push(JSON.parse(JSON.stringify(obj)));
-      __storeListeners.forEach(function (fn) { try { fn(ch, areaName); } catch (e) {} });
-      if (cb) cb();
-      if (areaName === "local" && __onLocalWrite) { try { __onLocalWrite(obj); } catch (e) {} }
-    },
-    remove: function (keys, cb) {
-      (Array.isArray(keys) ? keys : [keys]).forEach(function (k) { delete store[k]; });
-      if (cb) cb();
-    },
-  };
-}
-
+</script>
+<script src="_chrome-mock.js"></script>
+<script>
 // ===== أزواج المنافذ المقلَّدة: العميل بشكل chrome Port والخادم بما يتوقعه attach =====
 // postMessage من طرفٍ يصل مستمعي الطرف الآخر متزامنًا — يكفي لعقد المحكّم، ويجعل
 // «الفورية» (لا انتظار بعد الانقطاع) قابلةً للإثبات في السطر نفسه.
@@ -101,23 +80,20 @@ function makePortPair(name) {
 var pairs = [];      // كل منفذ أنشأه connect — بترتيب الإنشاء (لفحص الرسائل بعديًّا)
 var __arbB = null;   // محكّم الطبقة ب — يُنشأ بعد تحميل cml-arbiter.js، ويُستبدل في ١٣ (موت العامل)
 
-window.chrome = {
-  storage: {
-    local: makeArea(__localStore, __localWrites, "local"),
-    session: makeArea(__sessStore, __sessWrites, "session"),
-    onChanged: { addListener: function (fn) { __storeListeners.push(fn); } },
+// ===== القشرة الموحّدة: local + session (بوجود session يسلك المحرّك مسلك الإنتاج) =====
+// أزواج المنافذ خصوصيةُ هذه الصفحة، فتُحقن connect حقنًا — والقشرة تخزينٌ وسقالة فقط
+var MOCK = makeChromeMock({
+  runtimeConnect: function (info) {
+    // يُقرأ __arbB وقت الاستدعاء لا وقت التعريف: اختبار ١٣ يستبدله (عامل جديد بعد الموت)
+    var p = makePortPair(info && info.name);
+    pairs.push(p);
+    __arbB.attach(p.server);
+    return p.client;
   },
-  runtime: {
-    lastError: undefined,
-    connect: function (info) {
-      // يُقرأ __arbB وقت الاستدعاء لا وقت التعريف: اختبار ١٣ يستبدله (عامل جديد بعد الموت)
-      var p = makePortPair(info && info.name);
-      pairs.push(p);
-      __arbB.attach(p.server);
-      return p.client;
-    },
-  },
-};
+});
+var __localStore = MOCK.localStore, __sessStore = MOCK.sessStore;
+var __localWrites = MOCK.localWrites, __sessWrites = MOCK.sessWrites;
+window.chrome = MOCK.chrome;
 </script>
 <script src="../extension/cml-const.js"></script>
 <script src="../extension/cml-arbiter.js"></script>
@@ -330,18 +306,18 @@ function test13(next) {
   resetStores();
   var base = pairs.length;
   var killed = false;
-  __onLocalWrite = function (obj) {
+  MOCK.hooks.onLocalWrite = function (obj) {
     var r = obj.cml_scan_result;
     if (killed || !r || r.status !== "running" || !(r.fetched > 0)) return;
     killed = true;
-    __onLocalWrite = null;
+    MOCK.hooks.onLocalWrite = null;
     // موت عامل الخدمة: يذهب المحكّم بذاكرته (نسخة جديدة) وينقطع منفذ المحرّك
     __arbB = CMLArbiter.createArbiter();
     pairs[base].killFromServer();
   };
   fireScan();
   waitFor(function () { var r = __localStore.cml_scan_result; return !!(r && r.status === "done"); }, 8000, function (ok) {
-    __onLocalWrite = null;
+    MOCK.hooks.onLocalWrite = null;
     var r = __localStore.cml_scan_result || {};
     check("١٣ ★ قُتل العامل بعد أول تقدّم فعلًا", "true", killed);
     var p2 = pairs[base + 1];

@@ -24,22 +24,13 @@ td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
 <table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th><th></th></tr></thead><tbody></tbody></table>
 
 <script src="assets/v1/index-abc123def.js"></script>
+<script src="_chrome-mock.js"></script>
 <script>
-// قشرة chrome.storage: تسجّل كل كتابة لنفحص أول تحديث «جارٍ» ونراقب تجديد الحجز
-window.__store = {}; window.__listeners = []; window.__writes = [];
-window.chrome = { storage: {
-  local: {
-    get: function (keys, cb) { cb(Object.assign({}, window.__store)); },
-    set: function (obj, cb) {
-      var ch = {};
-      for (var k in obj) { ch[k] = { newValue: obj[k] }; window.__store[k] = obj[k]; }
-      window.__writes.push(JSON.parse(JSON.stringify(obj)));
-      window.__listeners.forEach(function (fn) { try { fn(ch, "local"); } catch (e) {} });
-      if (cb) cb();
-    },
-  },
-  onChanged: { addListener: function (fn) { window.__listeners.push(fn); } },
-} };
+// القشرة الموحّدة: سجلّ الكتابات يفحص أول تحديث «جارٍ» ويراقب تجديد الحجز
+var MOCK = makeChromeMock({ session: false });
+window.__store = MOCK.localStore;
+window.__writes = MOCK.localWrites;
+window.chrome = MOCK.chrome;
 </script>
 <script src="../extension/cml-const.js"></script>
   <script src="../extension/cml-shared.js"></script>

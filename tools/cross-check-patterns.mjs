@@ -48,6 +48,6 @@ console.log(`نصوص يغطيها أكثر من نمط: ${multi} من ${cat.len
 console.log(`★ حالات يفوز فيها الأعمّ على الأخصّ: ${wrongWinner}  (يجب 0)`);
 wrongEx.forEach((e) => console.log(`  «${e.s}»\n     فاز: ${JSON.stringify(e.won)}\n     الأولى: ${JSON.stringify(e.should)}`));
 if (wrongWinner) bad++;
-if (!cat.length) console.log("⚠ لا ملف حصاد — الحارس الثاني لم يجرِ فعليًا.");
+if (!cat.length) console.log("✓ (حارس الفائز الخاطئ على الحصاد الكامل يُفحص في مجلد التطوير وحده — ملف الحصاد خاص لا يُنشر؛ حارس التظليل أعلاه جرى على القاموس كاملًا)");
 
 process.exit(bad ? 1 : 0);

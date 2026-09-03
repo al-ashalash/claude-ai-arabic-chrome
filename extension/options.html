@@ -115,6 +115,21 @@
 
     <!-- General -->
     <section class="card">
+      <!-- فخّ أذون المضيف منذ فايرفوكس 127: أذونُ المواقع لا تُمنح عند التثبيت،
+           فتُثبَّت الإضافة وتصمت على claude.ai صمتًا تامًّا والمستخدم لا يدري لماذا.
+           اللوحة مخفية دائمًا، وoptions.js لا يُظهرها إلا في فايرفوكس ومتى كان
+           الإذن غير ممنوح — كروم يمنح الأذون تلقائيًّا فلا يراها أبدًا. -->
+      <div class="card hidden" id="ffPermBox" role="alert" style="border-color:var(--danger);margin:0 0 12px;padding:12px 14px">
+        <h2 style="font-size:14px;margin:0 0 6px;color:var(--danger)">⚠ خطوة أخيرة ليعمل التعريب في فايرفوكس</h2>
+        <p class="desc" style="margin:0 0 8px">
+          يعطّل فايرفوكس أذونَ المواقع افتراضيًّا عند تثبيت أي إضافة، ولذا <b>لن تعمل هذه
+          الإضافة على claude.ai</b> — لا ترجمة ولا اتجاه — حتى تمنحها الإذن بضغطة واحدة:
+        </p>
+        <div class="btnrow" style="margin-top:0">
+          <button class="primary" id="ffPermGrant">امنح الإذن لموقع claude.ai</button>
+        </div>
+      </div>
+      <div class="status hidden" id="ffPermStatus" role="status" aria-live="polite" style="margin:0 0 8px"></div>
       <h2>عام</h2>
       <div class="row">
         <label for="enabled">تفعيل التعريب</label>

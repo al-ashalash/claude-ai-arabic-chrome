@@ -1,0 +1,35 @@
+# CI — البوابات الخمس على كل دفعة وطلب دمج (المرحلة ٥ من خطة الإطلاق).
+# لا npm إطلاقًا: كل الأدوات Node خالص، والاختبارات المتصفحية عبر CDP على كروم العدّاء.
+name: CI
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: "البوابة ١ — صياغة كل ملفات JS"
+        run: node tools/check-syntax.mjs
+
+      - name: "البوابة ٢ — سلامة القاموس (lint-dict)"
+        run: node tools/lint-dict.mjs
+
+      # حارس «الفائز الخاطئ على الحصاد الكامل» يجري في مجلد التطوير وحده — ملف
+      # الحصاد خاص لا يُنشر، والبوابة هنا تفحص التظليل على القاموس كاملًا وتصرّح بذلك
+      - name: "البوابة ٣ — الأنماط: لا تظليل ولا فائز خاطئ"
+        run: node tools/cross-check-patterns.mjs
+
+      - name: "البوابة ٤ — الاختبارات المتصفحية كاملة (CDP بلا واجهة)"
+        run: node tools/run-tests-cdp.mjs
+        env:
+          CI: "true"
+
+      - name: "البوابة ٥ — سلامة الحزمة (المانيفست والصلاحيات والمصنوعات)"
+        run: node tools/verify-package.mjs

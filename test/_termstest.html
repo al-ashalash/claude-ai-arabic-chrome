@@ -34,19 +34,14 @@ td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
   <input type="file" id="importTransFile"><button id="resetAll"></button><div id="dangerStatus"></div>
 </div>
 
+<script src="_chrome-mock.js"></script>
 <script>
-window.__store = { cml_overrides: { ar: { "Zzq my own correction": "تصحيحي الخاص" } } };
-window.chrome = {
-  runtime: { getManifest: function () { return { short_name: "تعريب كلود للويب", version: "test", version_name: "test" }; } },
-  storage: {
-    local: {
-      get: function (k, cb) { cb(JSON.parse(JSON.stringify(window.__store))); },
-      set: function (o, cb) { for (var k in o) window.__store[k] = o[k]; if (cb) cb(); },
-      remove: function (k, cb) { (Array.isArray(k) ? k : [k]).forEach(function (x) { delete window.__store[x]; }); if (cb) cb(); },
-    },
-    onChanged: { addListener: function () {} },
-  },
-};
+var MOCK = makeChromeMock({ session: false });
+Object.assign(MOCK.localStore, { cml_overrides: { ar: { "Zzq my own correction": "تصحيحي الخاص" } } });
+// ما يخصّ الصفحة يبقى فيها: options.js يقرأ المانيفست لخانة «عن الإضافة»
+MOCK.chrome.runtime.getManifest = function () { return { short_name: "تعريب كلود للويب", version: "test", version_name: "test" }; };
+window.__store = MOCK.localStore;
+window.chrome = MOCK.chrome;
 </script>
 <script src="../extension/cml-const.js"></script>
   <script src="../extension/cml-shared.js"></script>

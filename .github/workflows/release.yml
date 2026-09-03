@@ -1,0 +1,50 @@
+# release — تسليم آلي عند وسم v* (المرحلة ٥): البوابات السريعة ثم حزمة zip
+# تُرفق بإصدار GitHub. الوسم قرار المالك وحده — وقاعدة البيت: لا وسم قبل اختبار
+# قبولٍ على الحزمة النهائية مثبَّتةً في المتصفح.
+#
+# النشر إلى متجر كروم يبقى يدويًّا عمدًا (رفع الـzip من لوحة المطور): أتمتته تحتاج
+# أسرار OAuth للمتجر (CWS_CLIENT_ID/SECRET/REFRESH_TOKEN + EXTENSION_ID) في أسرار
+# المستودع — متى أضافها المالك تُضاف هنا خطوة رفعٍ عبر chrome-webstore-upload-cli
+# أو نداء REST مباشر. لا نضمّنها الآن كي لا توحي الورقة بأتمتةٍ لا أسرار لها.
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: "بوابات ما قبل الحزم — الخمس كاملة (وسمٌ على التزامٍ لم يمرّ بدفعة CI يُشحن بلا فحص لولاها)"
+        run: |
+          node tools/check-syntax.mjs
+          node tools/lint-dict.mjs
+          node tools/cross-check-patterns.mjs
+          node tools/run-tests-cdp.mjs
+          node tools/verify-package.mjs
+        env:
+          CI: "true"
+
+      - name: "حزم الإضافة"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST_VERSION="$(node -e "console.log(JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8')).version)")"
+          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::الوسم $GITHUB_REF_NAME لا يطابق إصدار المانيفست $MANIFEST_VERSION"
+            exit 1
+          fi
+          cd extension && zip -r "../claude-ai-arabic-chrome-$GITHUB_REF_NAME.zip" . -x "*.pem" -x "*.crx"
+
+      - name: "إصدار GitHub مع الحزمة"
+        uses: softprops/action-gh-release@v2
+        with:
+          files: claude-ai-arabic-chrome-*.zip
+          generate_release_notes: true

@@ -27,9 +27,12 @@ const FILES = [
   ["web/user/dictionaries/ar.json", "dictionaries/ar.json"],
   ["web/code/languages.json", "tools/languages.json"],
   ["web/code/toolchain/icon-render.html", "tools/icon-render.html"], // مصدر الأيقونة
-  // الوثيقة الإنجليزية لمهندسي Anthropic — ملفًا مفردًا عمدًا: مجلد docs كله فيه
-  // مواد داخلية (STORE-LISTING) لا تُنشر، وقائمة السماح تنسخ المذكور وحده
+  // الوثيقة الإنجليزية — ملفًا مفردًا عمدًا: مجلد docs كله فيه مواد داخلية
+  // (STORE-LISTING) لا تُنشر، وقائمة السماح تنسخ المذكور وحده
   ["web/code/docs/RTL-UPSTREAM.md", "docs/RTL-UPSTREAM.md"],
+  // خطوط CI (المرحلة ٥): تعيش في التطوير وتُنسخ إلى موضعها القياسي في النشر
+  ["web/code/ci/ci.yml", ".github/workflows/ci.yml"],
+  ["web/code/ci/release.yml", ".github/workflows/release.yml"],
 ];
 const DIRS = [
   ["web/user/extension", "extension"],            // الإضافة نفسها

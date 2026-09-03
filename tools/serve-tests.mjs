@@ -8,9 +8,14 @@ import { ROOT } from "./paths.mjs";
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".png": "image/png" };
 
 http.createServer((req, res) => {
-  const url = decodeURIComponent(req.url.split("?")[0]);
+  // الحارسان نفسا حارسَي خادم مشغّل CDP (دحض مؤكد): ترميز مشوّه كان يقتل العملية،
+  // وstartsWith بلا فاصلٍ لاحق كانت تُخرج مجلدًا شقيقًا يشارك البادئة
+  let url;
+  try { url = decodeURIComponent(req.url.split("?")[0]); }
+  catch { res.writeHead(400); res.end(); return; }
   const fp = path.join(ROOT, url);
-  if (!fp.startsWith(path.resolve(ROOT))) { res.writeHead(403); res.end(); return; }
+  const base = path.resolve(ROOT);
+  if (fp !== base && !fp.startsWith(base + path.sep)) { res.writeHead(403); res.end(); return; }
   fs.readFile(fp, (err, data) => {
     if (err) { res.writeHead(404); res.end("not found"); return; }
     res.writeHead(200, { "Content-Type": TYPES[path.extname(fp)] || "application/octet-stream" });

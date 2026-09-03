@@ -6,7 +6,11 @@
  * لا يفقد شيئًا (لا حالة تستحق البقاء — المنحة حياتُها حياةُ منفذها أصلًا،
  * وإن مات أثناء زحفٍ نادرًا فمنفذ الزاحف ينقطع فيعيد طلبَ المنحة فورًا).
  */
-importScripts("cml-const.js", "cml-arbiter.js");
+// الملف الواحد يخدم بيئتين: عاملَ خدمة في كروم، وصفحةَ أحداث في فايرفوكس MV3
+// (الذي لا يشغّل عمال خدمة أصلًا). في الصفحة لا وجود لـimportScripts، ولا حاجة
+// إليها: مانيفست فايرفوكس يسرد cml-const وcml-arbiter قبل هذا الملف في
+// background.scripts بالترتيب نفسه، فالكائنات حاضرة قبل أن نصل هنا.
+if (typeof importScripts === "function") importScripts("cml-const.js", "cml-arbiter.js");
 
 var arbiter = CMLArbiter.createArbiter();
 

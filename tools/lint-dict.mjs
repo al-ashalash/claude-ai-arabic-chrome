@@ -13,9 +13,11 @@
 //  ٦) تحذيرات مصطلح (لا تُفشل): chat بلا «محادث»، skill بلا «مهار».
 import fs from "node:fs";
 import path from "node:path";
-import { DICTS, CODE } from "./paths.mjs";
+import * as __P from "./paths.mjs";
+const { DICTS } = __P;
+const CODE = __P.CODE || null; // غير مُصدَّر في بنية النشر — فحارس الحصاد تطويري وحده
 
-await import(new URL("../../user/extension/cml-shared.js", import.meta.url).href);
+await import(new URL("file:///" + path.join(__P.EXT, "cml-shared.js").split(path.sep).join("/")).href);
 const { sortBySpecificity, patternLiteralLen } = globalThis.CMLShared;
 
 const AR = path.join(DICTS, "ar.json");
@@ -103,8 +105,12 @@ const patterns = dict.patterns || [];
     }
     return null;
   };
-  const sharedSrc = fs.readFileSync(new URL("../../user/extension/cml-shared.js", import.meta.url), "utf8");
-  const harvSrc = fs.readFileSync(path.join(CODE, "tools", "harvest-all-strings.js"), "utf8");
+  const harvPath = CODE ? path.join(CODE, "tools", "harvest-all-strings.js") : null;
+  if (!harvPath || !fs.existsSync(harvPath)) {
+    console.log("✓ (حارس الحصاد يُفحص في مجلد التطوير وحده — سكربته الخاص لا يُنشر)");
+  } else {
+  const sharedSrc = fs.readFileSync(path.join(__P.EXT, "cml-shared.js"), "utf8");
+  const harvSrc = fs.readFileSync(harvPath, "utf8");
   const a = extractFn(sharedSrc, "unescapeLiteral");
   // في الحصاد الدالة سهمية داخل IIFE — نلتقط جسدها بين علامتين معروفتين
   const hm = harvSrc.match(/let s = \(\(\) => \{([\s\S]*?)\}\)\(\);/);
@@ -116,6 +122,7 @@ const patterns = dict.patterns || [];
     const missing = steps.filter((s) => !norm(hm[1]).includes(norm(s)) && !hm[1].includes(s));
     if (missing.length) fail(`نسخة الحصاد القسرية انحرفت عن المشتركة — خطوات مفقودة: ${missing.length}`);
     else console.log("✓ نسخة الحصاد القسرية من unescapeLiteral مطابقة جوهريًا للمشتركة");
+  }
   }
 }
 

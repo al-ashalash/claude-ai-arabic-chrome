@@ -879,6 +879,52 @@
     });
   }
 
+  // ---------- فخّ أذون المضيف منذ فايرفوكس 127 ----------
+  // فايرفوكس MV3 لا يمنح أذونَ مواقع سكربتات المحتوى عند التثبيت، فتُثبَّت الإضافة
+  // وتصمت على claude.ai صمتًا تامًّا — والمستخدم يظنها معطوبة. فنكشف الحال هنا
+  // ونعرض زرّ منح بضغطة. الكشف صارم (getBrowserInfo لا يوجد إلا في فايرفوكس)
+  // وكلُّ إخفاقٍ يُبتلع فتبقى اللوحة مخفية: الخطأ الآمن «لا لوحة» — لوحةٌ كاذبة
+  // في كروم (الذي يمنح الأذون تلقائيًّا) أسوأُ من غيابها في فايرفوكس.
+  var FF_ORIGINS = ["https://claude.ai/*", "https://*.claude.ai/*"];
+  function isFirefox() {
+    try {
+      return typeof browser !== "undefined" && browser.runtime &&
+        typeof browser.runtime.getBrowserInfo === "function";
+    } catch (e) { return false; }
+  }
+  function initFfPermBox() {
+    var box = $("ffPermBox"), btn = $("ffPermGrant"), st = $("ffPermStatus");
+    if (!box || !btn) return; // قشور الاختبار بلا هذه اللوحة
+    try {
+      if (!isFirefox()) return;
+      if (!browser.permissions || typeof browser.permissions.contains !== "function") return;
+      browser.permissions.contains({ origins: FF_ORIGINS }).then(function (granted) {
+        if (!granted) box.classList.remove("hidden");
+      }).catch(function () {});
+      btn.addEventListener("click", function () {
+        // request داخل معالج النقر مباشرةً: فايرفوكس يشترط إيماءةَ مستخدم حية،
+        // وأيُّ خطوة غير متزامنة قبله تُفقده الإيماءة فيُرفض الطلب بلا حوار أصلًا
+        try {
+          browser.permissions.request({ origins: FF_ORIGINS }).then(function () {
+            // لا نصدّق قيمة request وحدها بل نعيد السؤال — هي مصدر الحقيقة الواحد
+            return browser.permissions.contains({ origins: FF_ORIGINS });
+          }).then(function (granted) {
+            if (!st) return;
+            st.classList.remove("hidden");
+            if (granted) {
+              box.classList.add("hidden");
+              // نصٌّ باقٍ لا وامض: التعليمة التالية (تحديث التبويبات) يجب ألا تختفي
+              // قبل أن تُقرأ — فالإذن وحده لا يُحيي سكربتات التبويبات المفتوحة من قبل
+              st.textContent = "مُنح الإذن ✓ حدّث الآن تبويبات claude.ai المفتوحة (Ctrl+Shift+R) لتظهر الواجهة بالعربية.";
+            } else {
+              flash(st, "لم يُمنح الإذن — اضغط الزر ثم اختر «السماح» في حوار فايرفوكس.");
+            }
+          }).catch(function () {});
+        } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
   // ---------- reset ----------
   function resetAll() {
     if (!confirm("إعادة ضبط كل الإعدادات وحذف كلماتك المحفوظة؟ لا يمكن التراجع.")) return;
@@ -982,5 +1028,5 @@
     $("resetAll").addEventListener("click", resetAll);
   }
 
-  fillAbout(); wire(); loadState();
+  fillAbout(); wire(); loadState(); initFfPermBox();
 })();

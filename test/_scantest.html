@@ -74,7 +74,12 @@
       // ولا يظهر الهروب نصًّا خامًا في أي نتيجة
       check(all.indexOf('\\u2019') < 0 && all.indexOf('\\xe9') < 0, 'raw escape leaked into results');
 
-      var total = 17;
+      // الشبح (404 دائمة — اسمٌ يشبه الملفات داخل النصوص): يُحصى بهدوء ولا يُعدّ
+      // نقصًا — فقد كان إنذار «النتيجة ناقصة، أعد الفحص» الكاذب يظهر أبديًّا
+      check(r.ghosts === 1, 'ghost 404 not counted as ghost: ' + r.ghosts);
+      check(r.failed === 0, 'ghost wrongly counted as failed: ' + r.failed);
+
+      var total = pass + fails.length; // يُحسب لا يُثبَّت — مقامٌ يدويٌّ كذب لما زادت التحققات
       document.getElementById('out').innerHTML =
         '<b>SCAN: ' + pass + '/' + total + (fails.length ? ' — FAIL: ' + fails.join(' ; ') : ' — all pass') + '</b>' +
         '<br>files crawled: ' + r.fetched + ' | strings found: ' + r.found +

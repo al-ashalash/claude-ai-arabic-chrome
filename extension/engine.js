@@ -699,6 +699,8 @@
       var REF = /[A-Za-z0-9_]+-[A-Za-z0-9_-]{6,}\.js/g;
       var DM = /(?:"?defaultMessage"?):\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/g;
       var seen = {}, queue = [], msgs = {}, fetched = 0, found = 0, failed = 0;
+      var GHOST = {};              // علامة 404: إشارة وهمية لا ملف — تُحصى ولا تُعدّ نقصًا
+      var ghosts = 0, retryNames = [], retried = false;
       // ابذر الطابور بكل ملف يقع تحت القاعدة المكتشفة (لا تحت مسارٍ ثابتٍ مفترض)
       for (var k = 0; k < scripts.length; k++) {
         var uk = urlOf(scripts[k]);
@@ -767,7 +769,17 @@
       var ownCheck = 0;
       function step() {
         if (cancelScan) return abort();
-        if (!queue.length) return finish();
+        if (!queue.length) {
+          // جولة إعادة واحدة لإخفاقات الشبكة الحقيقية قبل الحكم بالنقص
+          if (retryNames.length && !retried) {
+            retried = true;
+            queue = retryNames;
+            retryNames = [];
+            return stepNow();
+          }
+          failed = retryNames.length;
+          return finish();
+        }
         // تحقّق من ملكية الحجز كل عشر دفعات: إن مسحه بدءُ فحصٍ جديد أو فاز به تبويب آخر
         // فانسحب بدل مواصلة زحفٍ موازٍ تتداخل كتاباته مع الزاحف الفائز.
         if (++ownCheck % 10 === 0) {
@@ -788,11 +800,16 @@
         var batch = queue.splice(0, PARALLEL);
         Promise.all(batch.map(function (n) {
           // ★ `fetch` لا ترفض عند 404 ولا 500 — فكان جسمُ صفحة الخطأ يُمرَّر إلى scanOne
-          // فيُحسب «ملفًا مفحوصًا» بلا نصوص. وانقطاعٌ شبكي كامل كان يُبلَّغ عنه
-          // «تمّ الفحص، صفر ناقص» — وهي أسوأ نتيجة ممكنة: خطأٌ يُقدَّم نجاحًا.
-          // الآن يُعدّ الإخفاق ويُصرَّح به، ولا يُحسب الملف مفحوصًا.
+          // فيُحسب «ملفًا مفحوصًا» بلا نصوص. ثم فُصل الإخفاق صنفين (تشخيص حي 2026-09-04
+          // على 2133 ملفًا: «المتعذرات» الـ32 كلها 404 دائمة):
+          //  - 404 = «إشارة وهمية»: المعبّرُ يلتقط من نصوص الحزم أسماءً تشبه الملفات
+          //    (أسماء عمال بمسارات أخرى، وأسماء ملفات أمثلة داخل رسائل مصرِّف مضمّنة،
+          //    وملفات خارجية) — ليست ملفات موقع أصلًا، وإعادةُ الفحص لن «تصلحها» أبدًا،
+          //    فعدُّها نقصًا كان إنذارًا كاذبًا بنيويًّا يوهم المستخدم أن النتيجة معيبة.
+          //  - غيرُ 404 (شبكة/5xx): إخفاق حقيقي قابل للشفاء — يدخل جولةَ إعادةٍ واحدة،
+          //    وما بقي بعدها هو «الناقص» المصرَّح به بحق.
           return fetch(base + n)
-            .then(function (r) { return r.ok ? r.text() : null; })
+            .then(function (r) { return r.ok ? r.text() : (r.status === 404 ? GHOST : null); })
             .catch(function () { return null; });
         })).then(function (texts) {
           var a = 0;
@@ -805,7 +822,9 @@
               if (scanGrant) scanGrant.beat(); // الزحف الكامل يتجاوز 200 ثانية، وحجزٌ بطابعٍ قديم يُعدّ متروكًا
               return yieldTo(step);
             }
-            if (texts[a] === null) failed++; else scanOne(texts[a]);
+            if (texts[a] === null) retryNames.push(batch[a]);
+            else if (texts[a] === GHOST) ghosts++;
+            else scanOne(texts[a]);
             texts[a] = null; // حرّر النص فورًا بدل احتجاز الدفعة كلها
             a++;
             yieldTo(chew); // ملف واحد لكل مهمة
@@ -856,7 +875,8 @@
         releaseResources();
         setScan({
           status: "done", fetched: fetched, found: found, capped: capped,
-          failed: failed,                   // ملفات تعذّر جلبها — نتيجةٌ ناقصة لا كاملة
+          failed: failed,                   // إخفاق شبكي حقيقي بقي بعد جولة الإعادة — نقصٌ بحق
+          ghosts: ghosts,                   // إشارات وهمية (404): ليست ملفات موقع — لا نقص فيها
           missing: missingTotal,            // الحقيقي (قد يفوق المعروض عند القصّ)
           shown: plain.length + vars.length, // المعروض في القائمتين
           list: plain, varList: vars,

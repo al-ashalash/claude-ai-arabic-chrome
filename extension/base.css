@@ -15,6 +15,32 @@ html[data-cml="on"][dir="rtl"] body {
   line-height: 1.7;
 }
 
+/* ★ قفلُ الشيفرة — غيرُ مشروطٍ بمحرّك الاتجاه (ثبت بمِسبارٍ مستقل):
+   «تركُ pre وشأنه» لا يكفي، فالعنصرُ **يرث** الاتجاه من حاويةٍ صار اتجاهها rtl —
+   وحاويةُ الرسالة تصير كذلك بـdir="auto" متى بدأت بالعربية، فتُحاذى الشيفرة يمينًا
+   ويختلّ ترتيبُها. وجزيرةُ محرّك v2 تعالج هذا لكنها خلف بوابته: فمن اختار المحرّك
+   النقطي، أو فعّل اتجاه المحادثة وحده وقلبُ الصفحة مطفأ، يبقى بلا حماية. فالقفل
+   هنا مشروطٌ بتفعيل الإضافة وحده، وisolate يمنع تسرّب ترتيب المحيط إلى داخل الكتلة. */
+html[data-cml="on"] pre,
+html[data-cml="on"] code,
+html[data-cml="on"] kbd,
+html[data-cml="on"] samp {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: left;
+}
+
+/* والرياضياتُ مثلُها: تُقرأ من اليسار مهما كان اتجاه الفقرة الحاضنة. */
+html[data-cml="on"] .katex,
+html[data-cml="on"] .katex-display,
+html[data-cml="on"] math,
+html[data-cml="on"] [class*="katex"],
+html[data-cml="on"] [role="math"] {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: left;
+}
+
 /* --- Full RTL layout (only when the RTL toggle is ON: html dir="rtl") --- */
 /* الإصلاحات النقطية كلها !important، وقانون الطبقات في المهمّات منقلب (المبكر
    يغلب) — فتُلفّ في @layer cml-point التي يعلنها rtl-overrides.css **قبل** طبقة

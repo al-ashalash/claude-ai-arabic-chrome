@@ -138,8 +138,57 @@
       .map(function (x) { return x.p; });
   }
 
+  /* ---------- resolveDir: حاسمُ اتجاه فقرةٍ من المحادثة (أذكى من dir="auto") ----------
+   * dir="auto" في المتصفح يحكم بـ**أول حرفٍ قويٍّ** لا غير، وهذا يخطئ في نمطين
+   * شائعين في محادثةٍ عربية (أكّدهما مسحُ مشاريع نظيرة، وتُثبتهما اختباراتنا):
+   *   ١) فقرةٌ تبدأ بضجيجٍ لاتينيٍّ ثم تسترسل عربيةً: رابطٌ، أو مسار، أو اسم ملف، أو
+   *      مقتطفُ شيفرةٍ بين علامتين مائلتين، أو رقمُ بند — فأولُ قويٍّ لاتينيٌّ فتُقلب كلها.
+   *   ٢) فقرةٌ تبدأ بكلمةٍ لاتينيةٍ واحدة وأكثرُها عربي.
+   * فالحسمُ هنا ثلاثُ درجات: تجريدُ الضجيج البادئ، ثم أولُ قويٍّ، ثم أغلبيةٌ حاسمة.
+   *
+   * ومبدأُ الحذر صريح: نُرجع null متى لم نجزم — فيبقى dir="auto" وهو سلوك المنصة
+   * القياسي. ولا نخالفه إلا حين يُغيّر التجريدُ الحكمَ أو تكون الأغلبية بهامشٍ ساحق.
+   * (النطاقات أرقامٌ لا أسماء: كلُّ ما يُكتب من اليمين إلى اليسار.)
+   */
+  var RTL_ONE = new RegExp("[\\u0590-\\u08FF\\uFB1D-\\uFDFF\\uFE70-\\uFEFF]");
+  var RTL_ALL = new RegExp("[\\u0590-\\u08FF\\uFB1D-\\uFDFF\\uFE70-\\uFEFF]", "g");
+  var LTR_ONE = new RegExp("[A-Za-z\\u00C0-\\u024F]");
+  var LTR_ALL = new RegExp("[A-Za-z\\u00C0-\\u024F]", "g");
+  // ضجيجٌ بادئٌ محايدُ الدلالة اتجاهيًّا وإن كان لاتينيَّ المحارف
+  var LEAD_NOISE = new RegExp(
+    "^(?:\\s|[\\u2000-\\u206F]|`[^`]*`|https?://\\S+|www\\.\\S+" +
+    "|[\\w.-]+\\.[A-Za-z]{2,6}(?:/\\S*)?|[\\w.-]*[/\\\\][\\w.\\-/\\\\]*" +
+    "|@[\\w.-]+|\\$[\\w.-]+|\\d+[.)\\-]?" +
+    "|[-–—•*+>#\\[\\](){}«»\"'،,.:;!?/\\\\|~^&=_])+");
+  function firstStrong(s) {
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charAt(i);
+      if (RTL_ONE.test(c)) return "rtl";
+      if (LTR_ONE.test(c)) return "ltr";
+    }
+    return null;
+  }
+  function resolveDir(text) {
+    if (!text) return null;
+    var s = String(text).slice(0, 600); // عيّنةٌ تكفي للحكم — ولا نمشي على نصٍّ طويل
+    var raw = firstStrong(s);
+    if (raw === null) return null;                  // لا حرف قويّ ⇒ dir=auto يكفي
+    var afterStrip = firstStrong(s.replace(LEAD_NOISE, ""));
+    // ١) التجريد غيّر الحكم ⇒ نصرّح به — ولبُّ الإصلاح أن الضجيج البادئ لا يحكم
+    if (afterStrip && afterStrip !== raw) return afterStrip;
+    // ٢) أغلبيةٌ حاسمة: هامشٌ مضاعَفٌ وعددٌ معتبر، وإلا فلا نخالف المنصة
+    var r = (s.match(RTL_ALL) || []).length;
+    var l = (s.match(LTR_ALL) || []).length;
+    if (r + l >= 12) {
+      if (raw !== "rtl" && r >= l * 2) return "rtl";
+      if (raw !== "ltr" && l >= r * 2) return "ltr";
+    }
+    return null;                                    // لم نجزم ⇒ اتركها لـdir="auto"
+  }
+
   g.CMLShared = {
     VAR_RE: VAR_RE,
+    resolveDir: resolveDir,
     escapeRe: escapeRe,
     unescapeLiteral: unescapeLiteral,
     makePattern: makePattern,

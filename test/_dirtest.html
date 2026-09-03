@@ -22,6 +22,10 @@ td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
   <ul><li>عنصر قائمة عربي</li><li>English list item</li></ul>
   <blockquote>اقتباس عربي داخل الرسالة</blockquote>
   <pre><code>const x = "code stays LTR";</code></pre>
+  <p id="pUrl">https://example.com/a هذا الرابط يشرح المسألة كاملةً بالعربية.</p>
+  <p id="pFile">config.json يحوي الإعدادات كلها وقد شرحتها لك أعلاه بالتفصيل.</p>
+  <p id="pMix">OK، هذا صحيحٌ تمامًا وقد جرّبته بنفسي أمس فنجح بلا مشكلة.</p>
+  <p id="pEn">This paragraph is fully English and must stay left to right.</p>
 </div>
 
 <!-- عناصر الحل الجذري لاختلاط الاتجاهين (خارج .prose كي تُترجم لا تُستثنى) -->
@@ -32,6 +36,7 @@ td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
 
 <table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th></tr></thead><tbody></tbody></table>
 
+<link rel="stylesheet" href="../extension/base.css">
 <script src="../extension/cml-const.js"></script>
   <script src="../extension/cml-shared.js"></script>
   <script src="../extension/dictionary.js"></script>
@@ -68,6 +73,19 @@ setTimeout(function () {
   check("عنصر القائمة عليه dir=auto", "auto", msg.querySelector("li").getAttribute("dir") || "(لا شيء)");
   check("الاقتباس عليه dir=auto", "auto", msg.querySelector("blockquote").getAttribute("dir") || "(لا شيء)");
   check("الشيفرة code تُترك بلا dir", "(لا شيء)", msg.querySelector("code").getAttribute("dir") || "(لا شيء)");
+
+  // ===== الحاسم الأذكى: dir=auto يحكم بأول حرفٍ قويّ فقط =====
+  check("★ فقرة صدرها رابطٌ ثم عربية تُحسم rtl (auto كان يقلبها)", "rtl",
+    document.getElementById("pUrl").getAttribute("dir"));
+  check("★ وصدرُها اسمُ ملفٍ كذلك", "rtl", document.getElementById("pFile").getAttribute("dir"));
+  check("★ كلمةٌ لاتينيةٌ ثم أغلبيةٌ عربية تُحسم rtl", "rtl",
+    document.getElementById("pMix").getAttribute("dir"));
+  check("الإنجليزيةُ الخالصة تبقى على auto (لا نخالف المنصة بلا داعٍ)", "auto",
+    document.getElementById("pEn").getAttribute("dir"));
+  // قفلُ الشيفرة غيرُ مشروطٍ بمحرّك v2: العنصر يرث الاتجاه بلا قفل (قِيس)
+  var codeCs = getComputedStyle(msg.querySelector("pre"));
+  check("★ الشيفرة مقفولةٌ يسارًا ولو بلا محرّك الاتجاه", "ltr/isolate",
+    codeCs.direction + "/" + codeCs.unicodeBidi);
 
   // ===== الحل الجذري لاختلاط الاتجاهين =====
   var mixed = document.getElementById("bidiMixed").textContent;

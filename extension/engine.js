@@ -473,6 +473,20 @@
 
   // ---------- conversation direction (optional; دير=auto lets the browser flow Arabic RTL and keep code/English LTR) ----------
   var CHATSEL = ".prose, .font-claude-message, [data-testid='user-message'], [data-testid='message-content']";
+  // ★ dir="auto" أساسٌ، وتدخُّلُنا استثناءٌ محسوم: المتصفح يحكم بأول حرفٍ قويٍّ لا
+  // غير، فتنقلب فقرةٌ عربيةٌ صدرُها رابطٌ أو مسارٌ أو مقتطفُ شيفرةٍ أو رقمُ بند.
+  // resolveDir يجرّد ذلك الضجيج ثم يحكم، ولا يُرجع رأيًا إلا حين يجزم — وإلا
+  // بقيت "auto" وهي سلوك المنصة القياسي (وقياسُنا أثبت أنه يضبط direction نفسها
+  // فتصحّ الخصائص المنطقية للأحفاد، وهو ما لا يفعله unicode-bidi:plaintext).
+  function setChatDir(el) {
+    var want = "auto";
+    try {
+      var txt = el.textContent;
+      if (txt && txt.length > 1) want = SHARED.resolveDir(txt) || "auto";
+    } catch (e) {}
+    if (el.getAttribute("dir") !== want) el.setAttribute("dir", want);
+  }
+
   function applyChatDir(root) {
     if (!root) return;
     var scope = root.nodeType === 1 ? root : (document.body || document.documentElement);
@@ -485,7 +499,7 @@
     for (var j = 0; j < list.length; j++) {
       var el = list[j];
       if (on) {
-        el.setAttribute("dir", "auto");
+        setChatDir(el);
         el.setAttribute("data-cml-dir", "1");
         // ★ dir=auto على الحاوية وحدها يحسم الاتجاه بأول حرف قويّ في الرسالة كلها،
         // فردٌّ يبدأ بالإنجليزية ثم يسترسل بالعربية يُعرض كله LTR وفقراته العربية
@@ -493,7 +507,7 @@
         var kids = el.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dd, dt, figcaption");
         for (var q = 0; q < kids.length; q++) {
           if (kids[q].closest("pre, code")) continue; // الشيفرة تبقى LTR
-          kids[q].setAttribute("dir", "auto");
+          setChatDir(kids[q]);
           kids[q].setAttribute("data-cml-dir", "1");
         }
       } else if (el.getAttribute("data-cml-dir")) {

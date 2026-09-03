@@ -889,18 +889,72 @@
   // ---------- المزامنة الاختيارية بين الأجهزة (المرحلة ٦) ----------
   // المنطق كله في cml-sync.js يقوده sw.js — لهذه الصفحة ثلاثة أدوار لا غير:
   //   ١) الموافقة الصريحة: لوحة شرح صادقة ثم كتابة علم cml_sync_enabled.
-  //   ٢) عرض حال آخر دفعة من cml_sync_state كما هي — بلا تجميل: ok/overflow/error.
+  //   ٢) عرض حال آخر دفعة من cml_sync_state كما هي — بلا تجميل: ok/overflow/error/wiped،
+  //      وحالٌ لا نعرفها تُقال باسمها ولا تسقط إلى ادّعاء نجاحٍ لا نعلمه.
   //   ٣) المسح المستقل: حذف مفاتيحنا (الميتا والشرائح) من chrome.storage.sync رأسًا —
-  //      مستقلٌّ عن الإيقاف عمدًا، لأن التعطيل لا يمسح ما رُفع.
+  //      مستقلٌّ عن الإيقاف عمدًا، لأن التعطيل لا يمسح ما رُفع. ولذلك زرُّه قسميٌّ
+  //      يُرى في الحالين، لا داخل لوحة «مفعّلة» التي تختفي عمّن أوقف المزامنة.
   var SYNC_TOTAL_KB = Math.round(CMLConst.SYNC_TOTAL_BYTES / 1000);
+
+  // مفاتيحنا وحدها في مساحة المزامنة (الميتا والشرائح) — لا نمسّ فيها سواها أبدًا
+  function ourSyncKeys(all) {
+    var keys = [];
+    for (var k in (all || {})) {
+      if (!Object.prototype.hasOwnProperty.call(all, k)) continue;
+      if (k === CMLConst.K.SYNC_META || k.indexOf(CMLConst.K.SYNC_CHUNK_PREFIX) === 0) keys.push(k);
+    }
+    return keys;
+  }
+
+  // «أفي حسابك شيءٌ مرفوع الآن؟» — تُسأل مساحةُ المزامنة نفسُها لا الحالُ المحلية،
+  // لأن المحلية قد تكذب: جهازٌ آخر مسح، أو أُعيد الضبط هنا فمُحيت الحال والمرفوع باقٍ.
+  // النداء يستقبل مصفوفة المفاتيح (فارغةً إن خلت المساحة)، أو null متى تعذّر السؤال
+  // أصلًا (قشرةٌ بلا chrome.storage.sync، أو خطأ) — وحينها لا ندّعي علمًا لا نملكه.
+  function probeSyncArea(cb) {
+    try {
+      if (!chrome.storage || !chrome.storage.sync) { cb(null, "غير متاحة هنا"); return; }
+      chrome.storage.sync.get(null, function (all) {
+        var e = chrome.runtime && chrome.runtime.lastError;
+        if (e) { cb(null, e.message); return; }
+        cb(ourSyncKeys(all));
+      });
+    } catch (e) { cb(null, String((e && e.message) || e)); }
+  }
+
+  // زرُّ المسح: يُرسم في الحالتين، وحالُه من المساحة نفسها لا من علم التفعيل
+  function renderWipeBox(enabled) {
+    var btn = $("syncWipeBtn"), note = $("syncWipeNote");
+    if (!btn) return; // قشور الاختبار بلا هذا القسم
+    btn.disabled = true;
+    if (note) note.textContent = "جارٍ سؤال مساحة المزامنة…";
+    probeSyncArea(function (keys, err) {
+      if (!keys) {
+        // لا ندري أفيها شيء أم لا ⇒ زرٌّ معطَّل وتصريحٌ بالسبب، لا زرٌّ يَعِد بما لا يفعل
+        btn.disabled = true;
+        if (note) note.textContent = "تعذّر سؤال مساحة المزامنة (" + (err || "خطأ غير معروف") +
+          ") — فلا نعرف أفيها من هذه الإضافة شيء أم لا. أعد فتح هذه الصفحة، وإن تكرّر فتحقّق من مزامنة كروم في متصفحك.";
+        return;
+      }
+      if (!keys.length) {
+        btn.disabled = true;
+        if (note) note.textContent = "لا شيء مرفوع من هذه الإضافة في حسابك الآن — فلا شيء يُمحى، والزرّ معطَّل حتى يُرفع شيء.";
+        return;
+      }
+      btn.disabled = false;
+      if (note) note.textContent = enabled
+        ? "في حسابك نسخةٌ مرفوعة من تصحيحاتك وقواعدك. ومحوُها لا يوقف المزامنة: ما دامت مفعّلةً هنا رُفعت نسختُك من جديد عند أول تعديل."
+        : "المزامنة مطفأة على هذا الجهاز، ونسختُك المرفوعة سابقًا لا تزال في حسابك — امسحها بالزرّ أعلاه، ولا حاجة إلى إعادة التفعيل.";
+    });
+  }
 
   function renderSync() {
     var off = $("syncOff"), on = $("syncOn");
-    if (!off || !on) return; // قشور الاختبار بلا هذا القسم
+    if (!off && !on && !$("syncWipeBtn")) return; // قشور الاختبار بلا هذا القسم
     get([CMLConst.K.SYNC_ENABLED, CMLConst.K.SYNC_STATE], function (s) {
       var enabled = s[CMLConst.K.SYNC_ENABLED] === true;
-      off.classList.toggle("hidden", enabled);
-      on.classList.toggle("hidden", !enabled);
+      if (off) off.classList.toggle("hidden", enabled);
+      if (on) on.classList.toggle("hidden", !enabled);
+      renderWipeBox(enabled); // قسميٌّ: يُرسم في الحالين قبل أي خروج مبكر
       if (!enabled) return;
       var st = s[CMLConst.K.SYNC_STATE];
       var line = $("syncStateLine"), fill = $("syncBarFill");
@@ -919,13 +973,31 @@
           needKb.toLocaleString("ar") + " كيلوبايت والسقف " + SYNC_TOTAL_KB.toLocaleString("ar") +
           "). كلُّها محفوظة محليًّا كما هي — احذف بعض التصحيحات، أو انقلها بين أجهزتك ملفًّا من «تصدير تصحيحاتك فقط».";
         if (fill) { fill.style.width = "100%"; fill.style.background = "var(--danger)"; }
+      } else if (st && st.status === "wiped") {
+        // بعد المسح: الصدق أن نقول «لا شيء مرفوع» ونُفرغ الشريط — كان يبقى سطرُ «آخر رفع»
+        // وشريطُه ممتلئًا لبياناتٍ لم تعد في الحساب أصلًا
+        line.innerHTML = "مُحي ما كان مرفوعًا (" + new Date(st.at || 0).toLocaleString("ar") +
+          ") — <b>لا شيء مرفوع في حسابك الآن</b>. والمزامنة ما زالت مفعّلةً على هذا الجهاز، " +
+          "فأول تعديل في تصحيحاتك أو قواعدك يرفعها من جديد.";
+        if (fill) { fill.style.width = "0"; fill.style.background = "var(--brand)"; }
       } else if (st && st.status === "error") {
-        line.textContent = "تعذّر الرفع الأخير (" + (st.error || "خطأ غير معروف") +
-          ") — ستُعاد المحاولة تلقائيًّا عند أول تعديل أو إيقاظ للإضافة.";
-        if (fill) fill.style.width = "0";
+        // صريحة لا مهوّنة: هذه الدفعة لم تُرفع، والمحلي سليم، وسببُ المتصفح كما قاله
+        // (وأغلبُه خنقُ كروم لكثرة الكتابات في الدقيقة)، ثم كيف تُستعجل المحاولة
+        line.textContent = "⚠ تعذّر الرفع الأخير (" + new Date(st.at || 0).toLocaleString("ar") +
+          ") — لم تُرفع هذه الدفعة، وتصحيحاتك كلها محفوظة على جهازك كما هي. " +
+          "قال المتصفح: " + (st.error || "خطأ غير معروف") + " — وأكثرُه كثرةُ الكتابات في الدقيقة، ويحدّها كروم. " +
+          "وتُعاد المحاولة تلقائيًّا عند أول تعديل أو إيقاظ للإضافة؛ ولاستعجالها عدّل تصحيحًا أو أعد تحميل الإضافة.";
+        if (fill) { fill.style.width = "0"; fill.style.background = "var(--danger)"; }
+      } else if (st && st.status) {
+        // حالٌ لا تعرفها هذه الصفحة (كتبتها نسخةٌ أحدث مثلًا): تُقال كما هي ولا تُلبَس
+        // ثوب «فُعّلت ✓» — فذاك ادّعاءُ نجاحٍ لا نعلمه
+        line.textContent = "حالُ آخر دفعة: «" + st.status + "» — وهي حالٌ لا تعرفها هذه الصفحة، " +
+          "فلا نستطيع تأكيد أن الرفع تمّ. وتصحيحاتك محفوظة على جهازك كما هي على كل حال. " +
+          "حدّث الإضافة أو أعد فتح هذه الصفحة.";
+        if (fill) { fill.style.width = "0"; fill.style.background = "var(--brand)"; }
       } else {
         line.textContent = "فُعّلت المزامنة ✓ — أول رفع يجري خلال ثوانٍ وستظهر حاله هنا.";
-        if (fill) fill.style.width = "0";
+        if (fill) { fill.style.width = "0"; fill.style.background = "var(--brand)"; }
       }
     });
   }
@@ -954,36 +1026,58 @@
       if (err) { flash($("syncStatus"), "تعذّر الحفظ."); return; }
       renderSync();
       // الصدق التزام العقد: الإيقاف محليّ ولا يمسّ الطرف البعيد — ونقولها للمستخدم
-      flash($("syncStatus"), "أُوقفت المزامنة على هذا الجهاز — وما رُفع سابقًا باقٍ في حسابك، ومسحُه بزرّ المسح بعد إعادة التفعيل.");
+      flash($("syncStatus"), "أُوقفت المزامنة على هذا الجهاز — وما رُفع سابقًا باقٍ في حسابك، ومسحُه بزرّ «امسح ما رُفع من حسابك» وهو ظاهرٌ الآن ولا يحتاج إعادة تفعيل.");
+    });
+  }
+
+  // لبّ المسح البعيد: بلا سؤالٍ ولا رسم — يقتسمه زرُّ المسح و«إعادة الضبط» معًا،
+  // فلا يفترق المساران في ماذا يُمحى ولا في ما يُكتب بعده.
+  // النداء يستقبل: {empty:true} إن لم يكن ثمة ما يُمحى، أو {ok:true}، أو {error:"…"}.
+  function wipeRemote(cb) {
+    probeSyncArea(function (keys, err) {
+      if (!keys) { cb({ error: err || "مساحة المزامنة غير متاحة" }); return; }
+      if (!keys.length) { cb({ empty: true }); return; }
+      try {
+        chrome.storage.sync.remove(keys, function () {
+          var e = chrome.runtime && chrome.runtime.lastError;
+          if (e) { cb({ error: e.message }); return; }
+          // الحال بعد المسح كانت تكذب: يبقى «آخر رفع … كذا كيلوبايت» وشريطُ السعة ممتلئًا
+          // لبياناتٍ لم تعد موجودة. فنكتب حالًا صادقة، ونمحو بصمةَ آخر حالةٍ طابقت السحابة
+          // (SYNC_LASTHASH) — وإلا عدّ حارسُ الصدى الحالةَ المحلية «مزامَنةً» فلم يُرفع
+          // شيءٌ أبدًا بعد المسح والمزامنةُ مفعّلة.
+          get([CMLConst.K.SYNC_STATE], function (s) {
+            var prev = s[CMLConst.K.SYNC_STATE] || {};
+            chrome.storage.local.remove(CMLConst.K.SYNC_LASTHASH, function () {
+              var e2 = chrome.runtime && chrome.runtime.lastError;
+              var patch = {};
+              // rev يُحمل معه عمدًا: هو أرضيةُ ترقيم الدفعة التالية، وإسقاطُه يعيد العدّ للوراء
+              patch[CMLConst.K.SYNC_STATE] = { status: "wiped", at: Date.now(), rev: prev.rev || 0 };
+              set(patch, function (e3) {
+                // المسح البعيد تمّ يقينًا، لكن الدفتر المحلي قد يتخلّف — يُصرَّح به ولا يُبتلع،
+                // فالسطر المعروض حينها لا يزال يصف حالًا انقضت
+                var bad = e2 || e3;
+                cb({ ok: true, stateErr: bad ? String(bad.message || bad) : null });
+              });
+            });
+          });
+        });
+      } catch (e2) {
+        // بيئة بلا chrome.storage.sync (قشور الاختبار مثلًا) — إخفاق صريح لا صامت
+        cb({ error: String((e2 && e2.message) || e2) });
+      }
     });
   }
 
   function syncWipe() {
     if (!confirm("سيُمحى كل ما رفعته هذه الإضافة إلى مساحة مزامنة حسابك.\n\n" +
       "نسخُ أجهزتك المحلية لا تُمسّ. وما دامت المزامنة مفعّلةً على جهازٍ ما فسيُرفع من جديد عند أول تعديل فيه.\n\nأتتابع؟")) return;
-    try {
-      chrome.storage.sync.get(null, function (all) {
-        if (chrome.runtime && chrome.runtime.lastError) {
-          flash($("syncStatus"), "تعذّر الوصول إلى مساحة المزامنة: " + chrome.runtime.lastError.message);
-          return;
-        }
-        // مفاتيحنا وحدها (الميتا والشرائح) — لا نمسّ أي مفتاح آخر في مساحة المزامنة
-        var keys = [];
-        for (var k in (all || {})) {
-          if (!Object.prototype.hasOwnProperty.call(all, k)) continue;
-          if (k === CMLConst.K.SYNC_META || k.indexOf(CMLConst.K.SYNC_CHUNK_PREFIX) === 0) keys.push(k);
-        }
-        if (!keys.length) { flash($("syncStatus"), "مساحة المزامنة خالية أصلًا — لا شيء يُمحى."); return; }
-        chrome.storage.sync.remove(keys, function () {
-          var e = chrome.runtime && chrome.runtime.lastError;
-          if (e) { flash($("syncStatus"), "تعذّر المسح: " + e.message); return; }
-          flash($("syncStatus"), "مُحي ما رُفع من حسابك ✓ — نسخ أجهزتك المحلية باقية كما هي.");
-        });
-      });
-    } catch (e) {
-      // بيئة بلا chrome.storage.sync (قشور الاختبار مثلًا) — إخفاق صريح لا صامت
-      flash($("syncStatus"), "تعذّر المسح — مساحة المزامنة غير متاحة هنا.");
-    }
+    wipeRemote(function (res) {
+      renderSync(); // في الأحوال كلها: حالُ الزرّ والسطر تتبع المساحة بعد المحاولة
+      if (res.error) { flash($("syncStatus"), "تعذّر المسح: " + res.error); return; }
+      if (res.empty) { flash($("syncStatus"), "مساحة المزامنة خالية أصلًا — لا شيء يُمحى."); return; }
+      flash($("syncStatus"), "مُحي ما رُفع من حسابك ✓ — نسخ أجهزتك المحلية باقية كما هي." +
+        (res.stateErr ? " (لكن تعذّر تحديث الحال المعروضة: " + res.stateErr + " — أعد فتح الصفحة.)" : ""));
+    });
   }
 
   // ---------- فخّ أذون المضيف منذ فايرفوكس 127 ----------
@@ -1033,9 +1127,43 @@
   }
 
   // ---------- reset ----------
+  // «إعادة الضبط» محليةٌ بالعقد (RESET_KEYS مفاتيح local لا غير)، وكان نصُّها يَعِد بعودة
+  // كل شيء إلى حالته الأولى بلا رجعة — وهو أوسع من فعلها: المرفوع يبقى في حساب جوجل
+  // ويعود كاملًا بمجرّد إعادة تفعيل المزامنة. فصار النصّان يقولان ما يقع في كل حال،
+  // وصار للمستخدم خيارٌ صريح يوسّعها إلى الطرف البعيد بمسار المسح نفسه.
   function resetAll() {
-    if (!confirm("إعادة ضبط كل الإعدادات وحذف كلماتك المحفوظة؟ لا يمكن التراجع.")) return;
-    chrome.storage.local.remove(KEYS, function () { flash($("dangerStatus"), "أُعيد الضبط."); loadState(); });
+    var also = !!($("resetWipeSync") && $("resetWipeSync").checked);
+    var msg = also
+      ? "سيُحذف من هذا الجهاز كل إعداداتك وتصحيحاتك وقواعدك الذكية ونتيجة الفحص،\n" +
+        "**ويُمحى أيضًا ما رُفع إلى مساحة مزامنة حسابك في جوجل**.\n\n" +
+        "يُمحى المرفوع أولًا؛ فإن تعذّر لم يُحذف من جهازك شيء.\n" +
+        "ونسخُ أجهزتك الأخرى المحلية لا تُمسّ.\n\nلا يمكن التراجع. أتتابع؟"
+      : "سيُحذف من **هذا الجهاز وحده** كل إعداداتك وتصحيحاتك وقواعدك الذكية ونتيجة الفحص.\n\n" +
+        "وما رُفع سابقًا إلى مساحة مزامنة حسابك في جوجل **يبقى هناك كما هو**،\n" +
+        "ويعود إلى هذا الجهاز كاملًا متى أعدتَ تفعيل المزامنة.\n" +
+        "ولمحوه معه: ألغِ هذه الرسالة، وعلّم «وامسح أيضًا ما رُفع إلى حسابك في جوجل».\n\n" +
+        "لا يمكن التراجع. أتتابع؟";
+    if (!confirm(msg)) return;
+    function local(extra) {
+      chrome.storage.local.remove(KEYS, function () {
+        flash($("dangerStatus"), "أُعيد الضبط." + (extra || ""));
+        loadState();
+      });
+    }
+    if (!also) {
+      local(" وما رُفع إلى حسابك باقٍ هناك — امسحه بزرّ «امسح ما رُفع من حسابك» في قسم المزامنة.");
+      return;
+    }
+    // البعيد أولًا: لو حُذف المحلي أوّلًا ثم أخفق المسح، ضاع علمُ المزامنة والدفاتر
+    // وبقي المرفوع بلا ما يدلّ عليه — فالإخفاق هنا يوقف كل شيء ولا يحذف من الجهاز شيئًا
+    wipeRemote(function (res) {
+      if (res.error) {
+        flash($("dangerStatus"), "لم تُعَد الضبط ولم يُحذف من جهازك شيء: تعذّر مسح ما رُفع (" +
+          res.error + "). أعد المحاولة، أو أزل العلامة لتقتصر على إعادة الضبط المحلية.");
+        return;
+      }
+      local(res.empty ? " ولم يكن في حسابك شيء مرفوع." : " ومُحي ما رُفع إلى حسابك ✓");
+    });
   }
 
   // ---------- load & wire ----------
@@ -1135,6 +1263,9 @@
     });
     try {
       chrome.storage.onChanged.addListener(function (ch, area) {
+        // مساحةُ المزامنة خاصةٌ بهذه الإضافة وحدها، فكلُّ تغيّر فيها تغيّرٌ في مفاتيحنا:
+        // دفعةُ جهازٍ آخر، أو مسحٌ جرى هناك ⇒ يتبعه حالُ زرّ المسح وسطرُه هنا فورًا
+        if (area === "sync") { renderSync(); return; }
         if (area !== "local") return;
         if (ch.cml_overrides) renderOrDefer("termsList", renderTerms);
         if (ch.cml_scan_result) renderScan(ch.cml_scan_result.newValue);

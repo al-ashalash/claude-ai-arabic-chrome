@@ -34,6 +34,7 @@
       SYNC_DEVICE: "cml_sync_device",     // local: هوية الجهاز — لتجاهل صدى دفعاتنا نحن
       SYNC_STATE: "cml_sync_state",       // local: حال آخر دفعة {status:"ok"|"overflow"|"error",…}
       SYNC_PENDING: "cml_sync_pending",   // local: طابع دفعة معلّقة — يضمن الدفع بعد موت العامل
+      SYNC_DIRTY: "cml_sync_dirty",       // local: علامة «حدثُ سحابةٍ لم يُدمج» — تنجو من موت العامل
       SYNC_META: "cml_syncmeta",          // sync: {v,rev,at,device,count,hash,chunks} — يُكتب آخِرًا
       SYNC_CHUNK_PREFIX: "cml_syncd_",    // sync: بادئة مفاتيح الشرائح cml_syncd_0..N
       // مفاتيح بناءات ما قبل النشر — تُحذف عند الإقلاع ولا تُستعمل
@@ -51,7 +52,7 @@
       "cml_recon_dismissed", "cml_bad_rules",
       "cml_rtl_engine", "cml_rtldoc_request", "cml_rtldoc_result",
       "cml_sync_enabled", "cml_sync_tombs", "cml_sync_lasthash",
-      "cml_sync_device", "cml_sync_state", "cml_sync_pending",
+      "cml_sync_device", "cml_sync_state", "cml_sync_pending", "cml_sync_dirty",
     ],
     UNUSED_KEYS: ["cml_collect", "cml_collected"],
 
@@ -85,6 +86,12 @@
     // الحذف بالغياب (وإلا محت تصحيحات الجهاز السليم في كل دمج)
     SYNC_SKEW_TOLERANCE_MS: 5 * 60 * 1000,
     SYNC_PUSH_DEBOUNCE_MS: 2000,    // تجميع التعديلات المتتابعة قبل الدفع (سقف الكتابات)
+    // طابعٌ معلّق أقدمُ من هذا عند الإيقاظ = مؤقّتٌ مات مع عامله ⇒ دفعٌ فوري؛ والأحدثُ
+    // منه ينتظر بقيّة المهلة بمؤقّتٍ جديد (المؤقّت الأصلي مات، والانتظار وحده لا يُعيده)
+    SYNC_WAKE_GRACE_MS: 10000,
+    // كتابتان متسابقتان قد تتركان السحابة ممزّقة: القارئ يُصلحها بدفعةٍ جديدة —
+    // وهذه أقلُّ مدةٍ بين إصلاحين، حارسًا من دورة إصلاحٍ لا تنتهي بين جهازين
+    SYNC_REPAIR_MIN_MS: 60 * 1000,
   };
   g.CMLConst = C;
 })(typeof globalThis !== "undefined" ? globalThis : this);

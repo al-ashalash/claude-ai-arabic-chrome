@@ -127,7 +127,16 @@
         if (typeof TextEncoder === "function") return new TextEncoder().encode(s).length;
         return unescape(encodeURIComponent(s)).length;
       };
-      var itemCost = function (k, v) { return syncBytes(k) + syncBytes(JSON.stringify(v)); };
+      // ★ وبتهريب كاتب JSON في كروم لا بتهريب JSON.stringify: كروم يهرّب «<» و«>»
+      // وفاصلَي السطر U+2028/U+2029 إلى ستّ بايتات لكلٍّ منها. قشرةٌ تزن بغير ميزانه
+      // كانت تقبل حمولةً كثيفةَ الأقواس الزاويّة يرفضها المتصفح الحقيقي.
+      var CHROME_ESC = /[<>\u2028\u2029]/g;
+      var chromeJson = function (v) {
+        return JSON.stringify(v).replace(CHROME_ESC, function (c) {
+          return "\\u" + ("000" + c.charCodeAt(0).toString(16).toUpperCase()).slice(-4);
+        });
+      };
+      var itemCost = function (k, v) { return syncBytes(k) + syncBytes(chromeJson(v)); };
       var syncArea = makeArea(syncStore, syncWrites, syncRemoved, "sync");
       var syncOkSet = syncArea.set;
       syncArea.set = function (obj, cb) {

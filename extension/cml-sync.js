@@ -16,14 +16,35 @@
  *
  * التعارض على مستوى المجموعة (حدٌّ مقبول موثّق): لا نحفظ وقتًا لكل تصحيح، بل
  *   للمجموعة كلها — من كان طابعُه (at) أحدثَ فقيمتُه تفوز عند اختلاف قيمتَي مفتاحٍ
- *   واحد، ومصفوفةُ القواعد تُؤخذ كلًّا من الطرف الأحدث. ثمن ذلك: تعديلان متزامنان
- *   حقًّا (في نافذة انتشار السحابة) قد يَغلب أحدُهما الآخرَ جملةً — نادرٌ ومقبول.
+ *   واحد. ثمن ذلك: تعديلان متزامنان حقًّا (في نافذة انتشار السحابة) قد يَغلب
+ *   أحدُهما الآخرَ في قيمة المفتاح المشترك — نادرٌ ومقبول. أما **وجودُ** العنصر
+ *   فاتحادٌ بالهوية لا حسمٌ جملي: التصحيحات بمفتاحها، والقواعد بمفتاح هويتها (re).
  *
- * شواهد الحذف (tombs) دفترٌ محلي فقط — لا تُرفع للسحابة: {"<لغة>|<مفتاح>": وقتُ الحذف}.
+ * هوية القاعدة: {en, re, ar} من CMLShared.makePattern — وre هو مُعرّفها المستقر
+ *   (صفحة الإعدادات نفسها تُحدِّث القاعدة بمطابقة re في الحفظ والاستيراد سواء).
+ *   ★ كان الدمج يأخذ مصفوفة القواعد كلًّا من الطرف الأحدث، فقواعد الجهاز الآخر
+ *   تُمحى بلا رجعة (ثلاثُ قواعد محلية + قاعدةٌ بعيدة أحدثُ = قاعدةٌ واحدة).
+ *   وترتيبُ الناتج قانوني (الأخصُّ أولًا ثم المفتاح أبجديًّا) لا ترتيبَ إدخال:
+ *   ترتيبان مختلفان لمجموعةٍ واحدة = بصمتان مختلفتان = تقاذفُ دفعاتٍ بلا نهاية.
+ *
+ * شواهد الحذف (tombs) دفترٌ محلي فقط — لا تُرفع للسحابة: {"<لغة>|<مفتاح>": وقتُ الحذف}
+ *   للتصحيحات، و{"#p|<re>": وقتُ الحذف} للقواعد — الحذفان على قدمٍ واحدة.
  *   الحذف ينتشر بالغياب: الجهاز الحاذف يدفع لقطةً أحدثَ بلا المفتاح، والمستقبِل
  *   يُسقط ما عنده مما غاب عنها (إن كانت أحدثَ من آخر تعديل محلي). والشاهد يحمي
  *   الحذفَ المحلي من لقطةٍ بعيدة أقدمَ تعيد المفتاح: شاهدٌ أحدثُ من at اللقطة
  *   ⇒ يبقى محذوفًا. يُشذَّب الدفتر بعمر SYNC_TOMB_TTL_MS وسقف SYNC_TOMB_MAX.
+ *
+ * سباق القراءة-التعديل-الكتابة: بين قراءة cml_overrides وكتابةِ نتيجة الدمج جولةٌ
+ *   إلى السحابة — وتصحيحٌ يحفظه المستخدم في تلك الأثناء كان يُدهس ويُسجَّل له شاهدُ
+ *   حذفٍ كاذب. فتُعاد القراءة قُبيل الكتابة مباشرةً وتُسنَد نتيجةُ الدمج عليها:
+ *   ما تغيّر محليًّا (إضافةً أو تعديلًا أو حذفًا) يفوز، ولا شاهدَ لمفتاحٍ حاضر.
+ *
+ * الكتابة الممزّقة والإصلاح: ترتيبُ الكتابة يحمي القارئ من لقطةٍ نصفِ مكتوبة، لكنه
+ *   لا يحمي من كاتبين متشابكين (شرائح أ، شرائح ب، ميتا ب، ميتا أ ⇒ ميتا فوق شرائح
+ *   غيرها) — وكلاهما ظنّ أنه أفلح فلا أحد يُصلح. فالقارئ مصلحٌ أيضًا: unpack=null
+ *   وقد سبقت لنا مزامنة (lasthash) ⇒ يُطبع طابعٌ معلّق فتُدفع لقطةٌ متّسقة،
+ *   بحارسٍ من دورة الإصلاح (لا إصلاح مع طابعٍ معلّق قائم، ولا إصلاحان في
+ *   أقلَّ من SYNC_REPAIR_MIN_MS).
  *
  * حارسا الصدى (كي لا تدور الدفعات على نفسها):
  *   ١) cml_sync_lasthash (محلي): بصمةُ آخر حالة طابقت السحابة — تغيّرٌ محلي بصمته
@@ -59,6 +80,17 @@
     // بديل البيئات العتيقة: encodeURIComponent يفكّ الحرف لبايتاته المئوية
     return unescape(encodeURIComponent(s)).length;
   }
+
+  // ★ كروم لا يزن الحصة بـJSON.stringify الذي عندنا، بل بكاتبِ JSON الخاص به —
+  // وهو يهرّب «<» و«>» وفاصلَي السطر U+2028/U+2029 إلى ستّ بايتات على صورة u003C.
+  // فحمولةٌ كثيفةُ الأقواس الزاويّة (وسمُ HTML في تصحيح، أو قاعدةٌ فيها وسم) كانت
+  // تمرّ من فحصنا ويرفضها كروم عند 8192 بايت. نزنُ كما يزن هو: نهرّب قبل القياس.
+  var CHROME_ESC = /[<>\u2028\u2029]/g;
+  function chromeEsc(c) {
+    return "\\u" + ("000" + c.charCodeAt(0).toString(16).toUpperCase()).slice(-4);
+  }
+  // بايتات قيمةٍ كما يحسبها كروم لحصته (JSON بتهريبه هو، بايتات UTF-8)
+  function jsonBytes(v) { return byteLen(JSON.stringify(v).replace(CHROME_ESC, chromeEsc)); }
 
   // FNV-1a (32 بت) على وحدات الترميز — نسخة محلية عمدًا: لا اعتماد على CMLRtl
   function fnv1a(s) {
@@ -111,7 +143,7 @@
     var lo = 1, hi = Math.min(json.length - pos, C.SYNC_ITEM_BYTES), best = 1;
     while (lo <= hi) {
       var mid = (lo + hi) >> 1;
-      var b = keyBytes + byteLen(JSON.stringify(json.substr(pos, mid)));
+      var b = keyBytes + jsonBytes(json.substr(pos, mid));
       if (b <= C.SYNC_ITEM_BYTES) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
     }
     return best;
@@ -131,7 +163,7 @@
       var n = sliceLen(json, pos, kb);
       var slice = json.substr(pos, n);
       sets[key] = slice;
-      total += kb + byteLen(JSON.stringify(slice));
+      total += kb + jsonBytes(slice);
       pos += n;
       i++;
     }
@@ -145,7 +177,7 @@
       chunks: i,
     };
     sets[K.SYNC_META] = meta;
-    total += byteLen(K.SYNC_META) + byteLen(JSON.stringify(meta));
+    total += byteLen(K.SYNC_META) + jsonBytes(meta);
     // الشرائح الفائضة من لقطة أطول سابقة — القارئ يتجاهلها (الميتا لا تعدّها)
     // لكن تركها يأكل الحصة المشتركة
     var removes = [];
@@ -177,6 +209,38 @@
   }
 
   // ---- الدمج ----------------------------------------------------------------
+
+  // اختصارٌ للقراءة في الكود الجديد وحده (الباقي على صيغته الصريحة كما كُتب)
+  function own(o, k) { return Object.prototype.hasOwnProperty.call(o || {}, k); }
+
+  // بادئة شواهد حذف القواعد — تفصلها عن شواهد التصحيحات "<لغة>|<مفتاح>"
+  // (رمز اللغة لا يكون "#p" أبدًا: القائمة عندنا في القاموس)
+  var RULE_TOMB = "#p|";
+
+  // هوية القاعدة المستقرة: re هو مُعرّفها في صفحة الإعدادات نفسها (الحفظ والاستيراد
+  // كلاهما يُحدِّث القاعدة بمطابقة re)، وما جاء بلا re (ملفٌ يدوي أو بناءٌ قديم)
+  // يُعرَّف بتمثيله النصي — هويةٌ مستقرة أيضًا ما دام محتواه هو هو
+  function ruleKey(p) {
+    if (p && typeof p.re === "string" && p.re) return p.re;
+    return "~" + JSON.stringify(p === undefined ? null : p);
+  }
+  function sameRule(a, b) { return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b); }
+
+  // طول النص الثابت — معيار التخصيص نفسه في CMLShared.sortBySpecificity (لا نستورده:
+  // الملف ثنائي الاستخدام وعاملُ الخدمة لا يحمّل cml-shared.js)
+  function ruleLiteralLen(p) { return String((p && p.en) || "").replace(/\{[^{}]*\}/g, "").length; }
+
+  // ترتيبٌ قانوني للقواعد: الأخصُّ أولًا (كما يتوقّع المحرّك)، وعند التساوي فالمفتاح
+  // أبجديًّا. الحسم بالمفتاح لا بترتيب الإدخال شرطُ التقارب: لو رتّب كلُّ جهازٍ
+  // الاتحادَ بترتيب إدخاله لاختلفت البصمتان فتقاذف الجهازان الدفعات بلا نهاية.
+  function sortRules(list) {
+    return list.map(function (p, i) { return { p: p, k: ruleKey(p), i: i }; })
+      .sort(function (a, b) {
+        return (ruleLiteralLen(b.p) - ruleLiteralLen(a.p)) ||
+               (a.k < b.k ? -1 : a.k > b.k ? 1 : a.i - b.i);
+      })
+      .map(function (x) { return x.p; });
+  }
 
   // شذّب الشواهد: أسقط ما جاوز العمر، وعند تجاوز السقف أسقط الأقدم أولًا
   function pruneTombs(tombs, nowMs) {
@@ -213,6 +277,31 @@
       }
     }
     return removed;
+  }
+
+  // قواعد اختفت بين كتابتَي cml_user_patterns — شواهدها كشواهد التصحيحات سواء،
+  // فحذفُ قاعدةٍ على جهازٍ لا يُحييه دمجٌ بلقطةٍ أقدم
+  function diffRemovedRules(oldPats, newPats) {
+    var have = {}, removed = [], i, k;
+    for (i = 0; i < (newPats || []).length; i++) have[ruleKey(newPats[i])] = 1;
+    for (i = 0; i < (oldPats || []).length; i++) {
+      k = ruleKey(oldPats[i]);
+      if (!have[k] && removed.indexOf(RULE_TOMB + k) < 0) removed.push(RULE_TOMB + k);
+    }
+    return removed;
+  }
+
+  // شاهدُ حذفٍ لمفتاحٍ عاد حاضرًا لا معنى له — ويزاحم غيرَه على سقف الدفتر (٢٠٠)
+  function dropTombsPresent(tombs, overrides, patterns) {
+    var live = {}, out = {}, lang, k, i;
+    for (lang in overrides || {}) {
+      if (!own(overrides, lang)) continue;
+      var m = overrides[lang] || {};
+      for (k in m) { if (own(m, k)) live[lang + "|" + k] = 1; }
+    }
+    for (i = 0; i < (patterns || []).length; i++) live[RULE_TOMB + ruleKey(patterns[i])] = 1;
+    for (k in tombs) { if (own(tombs, k) && !live[k]) out[k] = tombs[k]; }
+    return out;
   }
 
   // mergeIn(المحلي {overrides, patterns, tombs, at?, everSynced?}, البعيد {payload, meta}, الآن)
@@ -264,32 +353,105 @@
         if (!Object.prototype.hasOwnProperty.call(rm, k)) continue;
         if (Object.prototype.hasOwnProperty.call(lm, k)) continue;
         var tk = lang + "|" + k;
-        if (tombs[tk] && tombs[tk] > rAt) continue; // حذفناه بعد أن صُنعت هذه اللقطة — يبقى محذوفًا
+        // حذفناه بعد أن صُنعت هذه اللقطة ⇒ يبقى محذوفًا. ★ ولا يُستثنى من ذلك حين
+        // لا تُؤتمن حداثةُ اللقطة: طابعٌ في المستقبل كان يُبطل كلَّ شاهدٍ فيُحيي
+        // المحذوف، ثم يمحو الشاهدَ نفسه فلا يبقى للحذف أثرٌ يُحتجّ به أبدًا
+        if (tombs[tk] && (!trustRecency || tombs[tk] > rAt)) continue;
         if (tombs[tk]) delete tombs[tk]; // اللقطة أحدث من الشاهد: المفتاح عاد عن قصد فالشاهد لغا
         om[k] = rm[k];
       }
       if (Object.keys(om).length) out[lang] = om;
     }
 
-    // القواعد: مصفوفة بلا مفاتيح — كلٌّ من الطرف الأحدث (حد المجموعة نفسه)،
-    // إلا الدمج الأول فاتحادٌ بالتمثيل النصي كي لا تُمحى قواعدُ جهازٍ لم يدفع قط
+    // ★ القواعد تُدمج بالهوية كالتصحيحات (دحضٌ مؤكد: الأخذ الجملي من الطرف الأحدث
+    // كان يمحو قواعد الجهاز الآخر جملةً — [L1,L2,L3] محليًّا مع [R1] بعيدًا أحدثَ
+    // كان يُخرج [R1] وحدها، فثلاثُ قواعد للمستخدم تذهب بلا رجعة). المفتاح re،
+    // والقيمة عند التعارض لصاحب الطابع الأحدث، والغياب عن لقطةٍ أحدثَ حذفٌ
+    // ينتشر، والشاهدُ يحمي الحذفَ المحلي — أي عقدُ التصحيحات نفسه حرفًا.
     var outP;
     if (JSON.stringify(lp) === JSON.stringify(rp)) {
-      outP = lp;
-    } else if (!ever) {
-      outP = lp.slice();
-      var have = {};
-      for (var i = 0; i < lp.length; i++) have[JSON.stringify(lp[i])] = 1;
-      for (var j = 0; j < rp.length; j++) {
-        if (!have[JSON.stringify(rp[j])]) outP.push(rp[j]);
-      }
+      outP = lp; // متطابقتان: لا حاجة حتى للترتيب — الطرفان سواء أصلًا
     } else {
-      outP = localWins ? lp : rp;
+      var lmap = {}, rmap = {}, seenR = {}, picked = [], i, rk;
+      for (i = 0; i < lp.length; i++) { rk = ruleKey(lp[i]); if (!own(lmap, rk)) lmap[rk] = lp[i]; }
+      for (i = 0; i < rp.length; i++) { rk = ruleKey(rp[i]); if (!own(rmap, rk)) rmap[rk] = rp[i]; }
+      for (i = 0; i < lp.length; i++) {
+        rk = ruleKey(lp[i]);
+        if (seenR[rk]) continue;
+        seenR[rk] = 1;
+        if (own(rmap, rk)) picked.push(localWins ? lmap[rk] : rmap[rk]);
+        else if (!ever || localWins || !trustRecency) picked.push(lmap[rk]);
+        // وإلا: غابت عن لقطةٍ أحدث ⇒ حُذفت على جهازٍ آخر فتسقط هنا
+      }
+      for (i = 0; i < rp.length; i++) {
+        rk = ruleKey(rp[i]);
+        if (seenR[rk]) continue;
+        seenR[rk] = 1;
+        var rtk = RULE_TOMB + rk;
+        if (tombs[rtk] && (!trustRecency || tombs[rtk] > rAt)) continue; // حذفناها بعد اللقطة
+        if (tombs[rtk]) delete tombs[rtk];
+        picked.push(rmap[rk]);
+      }
+      outP = sortRules(picked);
     }
 
     var changedLocal =
       hashPayload({ overrides: out, patterns: outP }) !== hashPayload({ overrides: lo, patterns: lp });
     return { overrides: out, patterns: outP, tombs: tombs, changedLocal: changedLocal };
+  }
+
+  // ★ إعادة إسناد نتيجة الدمج على قراءةٍ طازجة (سباق القراءة-التعديل-الكتابة، دحضٌ
+  // مؤكد): بين قراءتنا الأولى وكتابتنا جولةٌ إلى السحابة، فتصحيحٌ يحفظه المستخدم في
+  // تلك الأثناء كان يُدهس — ويسوء الأمر بشاهد حذفٍ كاذبٍ يسجّله فرقُ كتابتنا فيمنع
+  // عودتَه أبدًا. القاعدة: base هو ما قرأناه، fresh ما هو الآن، وما تغيّر بينهما
+  // فعلُ المستخدم للتوّ — فيفوز على نتيجة الدمج إضافةً وتعديلًا وحذفًا.
+  function rebaseOverrides(merged, base, fresh) {
+    // لم يمسّ المستخدمُ شيئًا في تلك الأثناء (الغالب): نتيجةُ الدمج كما هي بلا ضجيج
+    if (hashPayload({ overrides: base, patterns: [] }) === hashPayload({ overrides: fresh, patterns: [] })) return merged;
+    var out = {}, lang, k, m, c;
+    for (lang in merged) { // نسخةٌ قابلة للتعديل بلا مسّ نتيجة الدمج
+      if (!own(merged, lang)) continue;
+      m = merged[lang] || {}; c = {};
+      for (k in m) { if (own(m, k)) c[k] = m[k]; }
+      out[lang] = c;
+    }
+    for (lang in base) { // حُذف محليًّا بعد قراءتنا: لا نُحييه
+      if (!own(base, lang)) continue;
+      var bm = base[lang] || {}, fm = fresh[lang] || {};
+      for (k in bm) { if (own(bm, k) && !own(fm, k) && out[lang]) delete out[lang][k]; }
+    }
+    for (lang in fresh) { // أُضيف أو عُدّل محليًّا بعد قراءتنا: قيمتُه هي الحق
+      if (!own(fresh, lang)) continue;
+      var fm2 = fresh[lang] || {}, bm2 = base[lang] || {};
+      for (k in fm2) {
+        if (!own(fm2, k)) continue;
+        if (!own(bm2, k) || bm2[k] !== fm2[k]) { out[lang] = out[lang] || {}; out[lang][k] = fm2[k]; }
+      }
+    }
+    for (lang in out) { if (own(out, lang) && !Object.keys(out[lang]).length) delete out[lang]; }
+    return out;
+  }
+
+  function rebaseRules(merged, base, fresh) {
+    if (JSON.stringify(base || []) === JSON.stringify(fresh || [])) return merged; // لا تغيّر محلي
+    var bmap = {}, fmap = {}, out = [], seen = {}, i, k;
+    for (i = 0; i < (base || []).length; i++) bmap[ruleKey(base[i])] = base[i];
+    for (i = 0; i < (fresh || []).length; i++) fmap[ruleKey(fresh[i])] = fresh[i];
+    for (i = 0; i < (merged || []).length; i++) {
+      k = ruleKey(merged[i]);
+      if (seen[k]) continue;
+      if (own(bmap, k) && !own(fmap, k)) continue; // حُذفت محليًّا للتوّ
+      seen[k] = 1;
+      // عُدّلت محليًّا للتوّ (المفتاح هو هو والمحتوى تغيّر) ⇒ نسخةُ المستخدم
+      out.push(own(fmap, k) && !sameRule(fmap[k], bmap[k]) ? fmap[k] : merged[i]);
+    }
+    for (i = 0; i < (fresh || []).length; i++) { // أُضيفت محليًّا للتوّ
+      k = ruleKey(fresh[i]);
+      if (seen[k] || own(bmap, k)) continue;
+      seen[k] = 1;
+      out.push(fresh[i]);
+    }
+    return sortRules(out);
   }
 
   // ---- التوصيل (منطق كامل فوق env — بلا chrome) ------------------------------
@@ -340,17 +502,63 @@
   }
 
   // قفل انشغال على مستوى الوحدة: العامل خيطٌ واحد لكن سلاسل الوعود تتشابك —
-  // دفعتان متداخلتان تكرّران rev. المتزاحم يُهمل بأمان: cml_sync_pending باقٍ
-  // فيلتقطه فحصُ الإيقاظ أو الحدث التالي
+  // دفعتان متداخلتان تكرّران rev، فلا بدّ من القفل.
+  //
+  // ★ لكن الإسقاط الصامت للمتزاحم كان يبتلع **حدث السحابة** ابتلاعًا تامًّا (دحضٌ
+  // مؤكد: تصحيحاتٌ تضيع على الجهازين): pending إنما يضمن دفعتَنا نحن، ولا أثر
+  // البتّةَ لحدثٍ بعيدٍ أُسقط — فاللقطة البعيدة لا تُدمج أبدًا. فلا يُسقَط شيء:
+  //   ١) عَلَمُ إعادةٍ في الذاكرة يستشيره المنتهي فيعيد النداء بعد أن يفرغ.
+  //   ٢) وعلامةٌ دائمة (cml_sync_dirty) في التخزين المحلي تنجو من موت العامل،
+  //      يلتقطها فحصُ الإيقاظ في sw.js فيعيد الدمج من اللقطة الحاضرة.
+  // والقارئ يقرأ اللقطة الحاضرة لا لقطة لحظة الحدث، فحدثٌ اصطناعي يكفي لإعادة النداء.
   var busy = false;
-  function guarded(fn) {
+  var rerunLocal = false, rerunSync = false;
+  var dirtyMark = false;
+  var DRAIN_MAX = 4; // سقفُ إعاداتٍ متتالية في نداءٍ واحد — وما زاد تلتقطه العلامة
+
+  function markDirty(env) {
+    if (dirtyMark) return Promise.resolve(); // كُتبت في هذه الحياة — لا تكرار كتابة
+    // ★ العلم يُرفع **بعد** نجاح الكتابة لا قبلها: رفعُه أولًا كان يُسكت كلَّ تأجيلٍ
+    // لاحقٍ بينما العلامةُ الدائمة غائبة (كتابةٌ أخفقت وابتُلع خطؤها) — فيضيع
+    // مسارُ الاسترداد بعد موت العامل لبقيّة حياته.
+    return pSetLocal(env, keyed(K.SYNC_DIRTY, 1)).then(function (err) {
+      if (!err) dirtyMark = true;
+    }, function () {});
+  }
+  function clearDirty(env) {
+    dirtyMark = false;
+    return pSetLocal(env, keyed(K.SYNC_DIRTY, 0)).catch(function () {});
+  }
+
+  function drain(env, left) {
+    if (left <= 0) return Promise.resolve();
+    if (rerunSync) {
+      rerunSync = false;
+      var synth = {}; synth[K.SYNC_META] = {}; // حدثٌ اصطناعي: المقروء هو اللقطة الحاضرة
+      return runGuarded(syncCore, env, synth, left - 1);
+    }
+    if (rerunLocal) {
+      rerunLocal = false;
+      return runGuarded(localCore, env, null, left - 1);
+    }
+    return dirtyMark ? clearDirty(env) : Promise.resolve();
+  }
+
+  function runGuarded(fn, env, changes, left) {
+    busy = true;
+    return fn(env, changes).then(
+      function (r) { busy = false; return drain(env, left).then(function () { return r; }); },
+      function (e) { busy = false; return drain(env, left).then(function () { throw e; }); }
+    );
+  }
+
+  function guarded(fn, kind) {
     return function (env, changes) {
-      if (busy) return Promise.resolve({ done: "busy" });
-      busy = true;
-      return fn(env, changes).then(
-        function (r) { busy = false; return r; },
-        function (e) { busy = false; throw e; }
-      );
+      if (busy) {
+        if (kind === "sync") rerunSync = true; else rerunLocal = true;
+        return markDirty(env).then(function () { return { done: "deferred" }; });
+      }
+      return runGuarded(fn, env, changes, DRAIN_MAX);
     };
   }
 
@@ -374,15 +582,25 @@
       var tombsDirty = false;
 
       // تسجيل شواهد الحذف من فرق الكتابة (oldValue→newValue) قبل أي شيء —
-      // بعد هذه اللحظة لا أثر للمفاتيح المحذوفة في أي مكان آخر
+      // بعد هذه اللحظة لا أثر للمفاتيح المحذوفة في أي مكان آخر. (وsw.js يكتبها
+      // كذلك لحظةَ الحدث نفسِه قبل المؤقّت — فموتُ العامل بينهما لا يُضيّع حذفًا.)
+      var removed = [], i;
       if (changes && changes[K.OVERRIDES]) {
-        var removed = diffRemovedKeys(changes[K.OVERRIDES].oldValue, changes[K.OVERRIDES].newValue);
-        for (var i = 0; i < removed.length; i++) { tombs[removed[i]] = now; tombsDirty = true; }
-        if (tombsDirty) tombs = pruneTombs(tombs, now);
+        removed = diffRemovedKeys(changes[K.OVERRIDES].oldValue, changes[K.OVERRIDES].newValue);
       }
+      if (changes && changes[K.USER_PATTERNS]) {
+        removed = removed.concat(
+          diffRemovedRules(changes[K.USER_PATTERNS].oldValue, changes[K.USER_PATTERNS].newValue));
+      }
+      for (i = 0; i < removed.length; i++) { tombs[removed[i]] = now; tombsDirty = true; }
+      if (tombsDirty) tombs = pruneTombs(tombs, now);
 
       var overrides = r[K.OVERRIDES] || {};
       var patterns = r[K.USER_PATTERNS] || [];
+
+      // شاهدُ ما عاد حاضرًا يُسقط: المفتاح أُعيد محليًّا فالشاهد لغوٌ يزاحم على السقف
+      var live = dropTombsPresent(tombs, overrides, patterns);
+      if (Object.keys(live).length !== Object.keys(tombs).length) { tombs = live; tombsDirty = true; }
       var lasthash = r[K.SYNC_LASTHASH];
       var state = r[K.SYNC_STATE] || {};
       var curHash = hashPayload({ overrides: overrides, patterns: patterns });
@@ -407,26 +625,41 @@
               var localAt = Math.max(state.at || 0, r[K.SYNC_PENDING] || 0);
               var m = mergeIn(
                 { overrides: overrides, patterns: patterns, tombs: tombs,
-                  at: localAt, everSynced: !!lasthash },
+                  // everSynced = «حالتي هذه مرفوعةٌ فعلًا» لا «سبق أن زامنت»: بلا هذا
+                  // القيد يمحو الحذفُ بالغياب تصحيحاتِ جهازٍ لم يُرفع له شيء (تجاوزُ
+                  // السعة، أو دفعةٌ معلّقة لم تنجح) — فقدٌ صامتٌ لكل عمله (دحض مؤكد)
+                  at: localAt, everSynced: !!lasthash && curHash === lasthash },
                 remote, now
               );
-              payload = { overrides: m.overrides, patterns: m.patterns };
-              var mergedHash = hashPayload(payload);
-              var w = {};
-              w[K.SYNC_TOMBS] = m.tombs;
-              if (m.changedLocal) { w[K.OVERRIDES] = m.overrides; w[K.USER_PATTERNS] = m.patterns; }
-              if (mergedHash === hashPayload(remote.payload)) {
-                // الدمج طابق البعيدَ تمامًا — تبنٍّ بلا دفع (دفعُ المِثل ضجيج rev)
-                w[K.SYNC_LASTHASH] = mergedHash;
-                w[K.SYNC_PENDING] = 0;
-                return pSetLocal(env, w).then(function () { return { done: "adopted" }; });
-              }
-              // عندنا زيادة على البعيد: تبنَّ الدمج ثم ادفعه (lasthash بعد نجاح الدفع
-              // لا قبله — لو كُتب الآن ومات العامل قبل الدفع لظنّ الإيقاظُ الحالةَ صدًى)
-              adopt = pSetLocal(env, w);
+              // ★ قراءةٌ طازجة قُبيل الكتابة: تصحيحٌ حفظه المستخدم أثناء جولة السحابة
+              // كان يُدهس ويُسجَّل له شاهدُ حذفٍ كاذب (انظر رأس الملف)
+              adopt = pGetLocal(env, [K.OVERRIDES, K.USER_PATTERNS]).then(function (fr) {
+                var fo = fr[K.OVERRIDES] || {}, fp = fr[K.USER_PATTERNS] || [];
+                payload = {
+                  overrides: rebaseOverrides(m.overrides, overrides, fo),
+                  patterns: rebaseRules(m.patterns, patterns, fp),
+                };
+                var mergedHash = hashPayload(payload);
+                var w = {};
+                // ولا شاهدَ لمفتاحٍ صار حاضرًا في المكتوب (أعاده المستخدم للتوّ)
+                w[K.SYNC_TOMBS] = dropTombsPresent(m.tombs, payload.overrides, payload.patterns);
+                if (mergedHash !== hashPayload({ overrides: fo, patterns: fp })) {
+                  w[K.OVERRIDES] = payload.overrides; w[K.USER_PATTERNS] = payload.patterns;
+                }
+                if (mergedHash === hashPayload(remote.payload)) {
+                  // الدمج طابق البعيدَ تمامًا — تبنٍّ بلا دفع (دفعُ المِثل ضجيج rev)
+                  w[K.SYNC_LASTHASH] = mergedHash;
+                  w[K.SYNC_PENDING] = 0;
+                  return pSetLocal(env, w).then(function () { return "adopted"; });
+                }
+                // عندنا زيادة على البعيد: تبنَّ الدمج ثم ادفعه (lasthash بعد نجاح الدفع
+                // لا قبله — لو كُتب الآن ومات العامل قبل الدفع لظنّ الإيقاظُ الحالةَ صدًى)
+                return pSetLocal(env, w).then(function () { return null; });
+              });
             }
 
-            return adopt.then(function () {
+            return adopt.then(function (early) {
+              if (early === "adopted") return { done: "adopted" };
               var rev = Math.max(remote ? remote.meta.rev || 0 : 0, state.rev || 0) + 1;
               var packed = pack(payload, {
                 rev: rev, device: device, now: now, prevChunks: chunkCountIn(snap),
@@ -495,7 +728,27 @@
 
       return pGetSyncAll(env).then(function (snap) {
         var remote = unpack(snap);
-        if (!remote) return { done: "torn" }; // كتابة ممزّقة — دفعةُ صاحبها التالية تتمّها
+        if (!remote && !snap[K.SYNC_META]) return { done: "empty" }; // مُسحت أو لم تُكتب قط
+        if (!remote) {
+          // ★ القارئ مصلحٌ لا شاهدٌ صامت: كاتبان متشابكان (شرائح أ، شرائح ب، ميتا ب،
+          // ميتا أ) يتركان السحابة ممزّقة **أبدًا** — كلاهما كتب lasthash وصفّر
+          // pending فظنّ أنه أفلح، فلا دفعةَ تالية تتمّها. فمن سبقت له مزامنة يطبع
+          // طابعًا معلّقًا: المؤقّت أو الإيقاظ يدفع لقطةً متّسقة كاملة.
+          var stT = r[K.SYNC_STATE] || {};
+          var nowT = env.now();
+          if (!r[K.SYNC_LASTHASH]) return { done: "torn" };   // لم نزامن قط: ليس عندنا ما نصلح به
+          if (r[K.SYNC_PENDING]) return { done: "torn" };      // دفعةٌ معلّقة أصلًا ستصلحها
+          // حارس الدوران: إصلاحٌ واحد كل SYNC_REPAIR_MIN_MS على الأكثر
+          if (stT.repairAt && nowT - stT.repairAt < C.SYNC_REPAIR_MIN_MS) return { done: "torn" };
+          var stCopy = {}, sk;
+          for (sk in stT) { if (own(stT, sk)) stCopy[sk] = stT[sk]; }
+          stCopy.repairAt = nowT;
+          var wR = {};
+          wR[K.SYNC_PENDING] = nowT;
+          wR[K.SYNC_STATE] = stCopy;
+          wR[K.SYNC_LASTHASH] = null; // وإلا صدَّ حارسُ الصدى الدفعةَ المُصلِحة فبقي التمزّق أبدًا
+          return pSetLocal(env, wR).then(function () { return { done: "repair" }; });
+        }
         if (device && remote.meta.device === device) return { done: "self" };
 
         var remoteHash = hashPayload(remote.payload);
@@ -504,28 +757,40 @@
 
         var state = r[K.SYNC_STATE] || {};
         var now = env.now();
+        var baseOv = r[K.OVERRIDES] || {}, basePat = r[K.USER_PATTERNS] || [];
         var m = mergeIn(
           {
-            overrides: r[K.OVERRIDES] || {},
-            patterns: r[K.USER_PATTERNS] || [],
+            overrides: baseOv,
+            patterns: basePat,
             tombs: r[K.SYNC_TOMBS] || {},
             at: Math.max(state.at || 0, r[K.SYNC_PENDING] || 0),
-            everSynced: !!lasthash,
+            // القيد نفسه هنا (انظر localCore): حالتي المحلية يجب أن تكون هي المرفوعة
+            everSynced: !!lasthash && hashPayload({ overrides: baseOv, patterns: basePat }) === lasthash,
           },
           remote, now
         );
-        var mergedHash = hashPayload({ overrides: m.overrides, patterns: m.patterns });
 
-        // lasthash = بصمة البعيد (لا الدمج): إن ساوى الدمجُ البعيدَ خمد الصدى هنا،
-        // وإن زاد عليه بقيت البصمتان مختلفتين فيدفع localCore الزيادةَ فورًا بعدنا
-        var w = {};
-        w[K.SYNC_TOMBS] = m.tombs;
-        w[K.SYNC_LASTHASH] = remoteHash;
-        if (m.changedLocal) { w[K.OVERRIDES] = m.overrides; w[K.USER_PATTERNS] = m.patterns; }
-        return pSetLocal(env, w).then(function () {
-          if (mergedHash === remoteHash) return { done: "merged" };
-          return localCore(env, null).then(function (pr) {
-            return { done: "merged+push", push: pr && pr.done };
+        // ★ قراءةٌ طازجة قُبيل الكتابة (كما في localCore): بين قراءتنا وكتابتنا جولةُ
+        // getSyncAll، وتصحيحٌ حُفظ فيها كان يُدهس ويُسجَّل له شاهدُ حذفٍ كاذب
+        return pGetLocal(env, [K.OVERRIDES, K.USER_PATTERNS]).then(function (fr) {
+          var fo = fr[K.OVERRIDES] || {}, fp = fr[K.USER_PATTERNS] || [];
+          var outOv = rebaseOverrides(m.overrides, baseOv, fo);
+          var outPat = rebaseRules(m.patterns, basePat, fp);
+          var mergedHash = hashPayload({ overrides: outOv, patterns: outPat });
+
+          // lasthash = بصمة البعيد (لا الدمج): إن ساوى الدمجُ البعيدَ خمد الصدى هنا،
+          // وإن زاد عليه بقيت البصمتان مختلفتين فيدفع localCore الزيادةَ فورًا بعدنا
+          var w = {};
+          w[K.SYNC_TOMBS] = dropTombsPresent(m.tombs, outOv, outPat);
+          w[K.SYNC_LASTHASH] = remoteHash;
+          if (mergedHash !== hashPayload({ overrides: fo, patterns: fp })) {
+            w[K.OVERRIDES] = outOv; w[K.USER_PATTERNS] = outPat;
+          }
+          return pSetLocal(env, w).then(function () {
+            if (mergedHash === remoteHash) return { done: "merged" };
+            return localCore(env, null).then(function (pr) {
+              return { done: "merged+push", push: pr && pr.done };
+            });
           });
         });
       });
@@ -534,14 +799,20 @@
 
   g.CMLSync = {
     byteLen: byteLen,
+    jsonBytes: jsonBytes,     // بايتات القيمة كما يزنها كروم (تهريب < و> وفاصلَي السطر)
     hashPayload: hashPayload,
     countPayload: countPayload,
     pack: pack,
     unpack: unpack,
     mergeIn: mergeIn,
+    ruleKey: ruleKey,         // هوية القاعدة — يستهلكها sw.js لشواهد حذف القواعد
+    RULE_TOMB: RULE_TOMB,
     diffRemovedKeys: diffRemovedKeys,
+    diffRemovedRules: diffRemovedRules,
+    dropTombsPresent: dropTombsPresent,
     pruneTombs: pruneTombs,
-    handleLocalChange: guarded(localCore),
-    handleSyncChange: guarded(syncCore),
+    clearDirty: clearDirty,   // يمحو علامة «حدثٌ لم يُدمج» — يناديها فحصُ الإيقاظ بعد الدمج
+    handleLocalChange: guarded(localCore, "local"),
+    handleSyncChange: guarded(syncCore, "sync"),
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

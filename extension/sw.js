@@ -64,13 +64,30 @@ var syncEnv = {
 // تجميع الدفع: التعديلات المتتابعة (استيراد قاموس، حذف متتالٍ) دفعةٌ واحدة بعد
 // مهلة SYNC_PUSH_DEBOUNCE_MS. المؤقّت وحده لا يُؤتمن — العامل قد يُقتل قبل أن
 // يطلق — فيُكتب طابع cml_sync_pending قبل المؤقّت، وفحصُ الإيقاظ أدناه يلتقط
-// طابعًا تُرك أكثر من ١٠ ثوانٍ فيدفع فورًا: موتُ العامل بين الطابع والمؤقّت لا يُضيع شيئًا.
+// طابعًا تُرك أكثر من مهلة SYNC_WAKE_GRACE_MS فيدفع فورًا: موتُ العامل بين الطابع
+// والمؤقّت لا يُضيع شيئًا.
 var syncTimer = null;
 var syncAccum = null; // فروق cml_overrides المتراكمة: أقدمُ oldValue وأحدثُ newValue
                       // — كي لا يفوت شاهدُ حذفٍ وقع في أول كتابةٍ من سلسلة مجمّعة
+// ★ علم الموافقة مخبوءًا: كان الطابع يُكتب مع كل حفظ تصحيحٍ ولو لم تُفعَّل المزامنة
+// قطّ — كتابةٌ في كل حفظ بلا معنى. يُقرأ عند الإيقاظ ويُحدَّث من onChanged نفسه،
+// وقبل أول قراءة (null) لا نمنع شيئًا: localCore يقرأ الموافقة طازجةً ويصفّر الطابع.
+var syncEnabled = null;
 
 function syncQueue(changes) {
-  var watched = [CMLConst.K.OVERRIDES, CMLConst.K.USER_PATTERNS];
+  if (syncEnabled === false) return; // بلا موافقة لا طابع ولا مؤقّت ولا كتابة
+  if (syncEnabled === null) {
+    // نافذةُ إقلاعٍ لم يُقرأ فيها العلم بعد: نقرؤه ثم نُعاود — الكتابةُ على الشك
+    // كانت تُبقي ما أزالته المعالجةُ الثامنة (طابعٌ في كل حفظٍ بلا مزامنةٍ أصلًا)
+    chrome.storage.local.get([CMLConst.K.SYNC_ENABLED], function (r) {
+      void chrome.runtime.lastError;
+      syncEnabled = !!(r && r[CMLConst.K.SYNC_ENABLED] === true);
+      if (syncEnabled) syncQueue(changes);
+    });
+    return;
+  }
+  var K = CMLConst.K;
+  var watched = [K.OVERRIDES, K.USER_PATTERNS];
   for (var i = 0; i < watched.length; i++) {
     var k = watched[i];
     if (!changes[k]) continue;
@@ -78,9 +95,35 @@ function syncQueue(changes) {
     if (!syncAccum[k]) syncAccum[k] = { oldValue: changes[k].oldValue, newValue: changes[k].newValue };
     else syncAccum[k].newValue = changes[k].newValue;
   }
-  chrome.storage.local.set((function () {
-    var o = {}; o[CMLConst.K.SYNC_PENDING] = Date.now(); return o;
-  })());
+
+  // ★ شواهدُ الحذف تُحسب هنا وتُكتب دائمةً **مع الطابع في كتابةٍ واحدة**: كانت
+  // تُشتقّ من المُراكم في الذاكرة عند انطلاق المؤقّت، فموتُ العامل بين الطابع
+  // والمؤقّت يُبخّر الشاهد — ثم يُحيي الدمجُ التالي التصحيحَ المحذوف. الفرقُ لا
+  // يُستخرج إلا من هذا الحدث نفسِه (oldValue لا أثر له بعده في أي مكان).
+  var removed = [];
+  if (changes[K.OVERRIDES]) {
+    removed = CMLSync.diffRemovedKeys(changes[K.OVERRIDES].oldValue, changes[K.OVERRIDES].newValue);
+  }
+  if (changes[K.USER_PATTERNS]) {
+    removed = removed.concat(
+      CMLSync.diffRemovedRules(changes[K.USER_PATTERNS].oldValue, changes[K.USER_PATTERNS].newValue));
+  }
+  var stamp = Date.now();
+  if (removed.length) {
+    chrome.storage.local.get([K.SYNC_TOMBS], function (r) {
+      void chrome.runtime.lastError;
+      var tombs = (r && r[K.SYNC_TOMBS]) || {};
+      for (var j = 0; j < removed.length; j++) tombs[removed[j]] = stamp;
+      var o = {};
+      o[K.SYNC_TOMBS] = CMLSync.pruneTombs(tombs, stamp);
+      o[K.SYNC_PENDING] = stamp;
+      chrome.storage.local.set(o, function () { void chrome.runtime.lastError; });
+    });
+  } else {
+    var o2 = {}; o2[K.SYNC_PENDING] = stamp;
+    chrome.storage.local.set(o2, function () { void chrome.runtime.lastError; });
+  }
+
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(function () {
     syncTimer = null;
@@ -92,8 +135,21 @@ function syncQueue(changes) {
 
 chrome.storage.onChanged.addListener(function (changes, area) {
   if (area === "local") {
+    // العلم المخبوء يُحدَّث أولًا: لحظةُ الموافقة نفسها تمرّ من هنا قبل syncQueue
+    if (changes[CMLConst.K.SYNC_ENABLED]) {
+      syncEnabled = changes[CMLConst.K.SYNC_ENABLED].newValue === true;
+    }
     if (changes[CMLConst.K.OVERRIDES] || changes[CMLConst.K.USER_PATTERNS]) {
       syncQueue(changes);
+    } else if (changes[CMLConst.K.SYNC_PENDING] && changes[CMLConst.K.SYNC_PENDING].newValue) {
+      // طابعٌ كتبه المحرّك نفسُه (إصلاحُ سحابةٍ ممزّقة مثلًا): سلّح له مؤقّتًا وإلا
+      // نام إلى الإقلاع التالي — والإصلاح بلا دفعةٍ ليس إصلاحًا
+      if (syncEnabled !== false && !syncTimer) {
+        syncTimer = setTimeout(function () {
+          syncTimer = null;
+          CMLSync.handleLocalChange(syncEnv, null).catch(function () {});
+        }, CMLConst.SYNC_PUSH_DEBOUNCE_MS);
+      }
     } else if (changes[CMLConst.K.SYNC_ENABLED] &&
                changes[CMLConst.K.SYNC_ENABLED].newValue === true) {
       // لحظة الموافقة: مزامنة أولى فورية (سحبُ ما في السحابة ودمجُه ثم دفعُ الاتحاد)
@@ -111,12 +167,36 @@ chrome.storage.onChanged.addListener(function (changes, area) {
   }
 });
 
-// فحص الإيقاظ: دفعة معلّقة مات العامل قبل إتمامها (الطابع أقدم من ١٠ ثوانٍ —
-// الأحدث منها لمؤقّتٍ حي أو لحدثٍ سيُعيد العامل للحياة بنفسه لاحقًا)
-chrome.storage.local.get([CMLConst.K.SYNC_PENDING], function (r) {
-  void chrome.runtime.lastError;
-  var t = r && r[CMLConst.K.SYNC_PENDING];
-  if (t && Date.now() - t > 10000) {
-    CMLSync.handleLocalChange(syncEnv, null).catch(function () {});
-  }
-});
+// فحص الإيقاظ (دالةٌ مسمّاة كي تختبرها _synctest بحالات تخزينٍ مزروعة):
+//   ١) علامةُ cml_sync_dirty: حدثُ سحابةٍ أُجّل لانشغال القفل ثم مات العامل — لا
+//      أثر له في pending (ذاك لدفعاتنا نحن)، فلولا العلامة ما دُمجت اللقطة أبدًا.
+//   ٢) طابعٌ معلّق أقدمُ من المهلة: مؤقّتٌ مات مع عامله ⇒ دفعٌ فوري.
+//   ★ والأحدثُ منها كان يُترك بلا شيء — والمؤقّتُ الذي يُعوَّل عليه مات مع العامل،
+//      فلا يُدفع حتى تعديلٍ جديد. فيُعاد تسليحُ مؤقّتٍ لبقيّة المهلة (ولا نزاحم
+//      مؤقّتًا حيًّا سلّحه حدثٌ أيقظ العامل قبل قليل).
+function syncWakeCheck() {
+  var K = CMLConst.K;
+  chrome.storage.local.get([K.SYNC_ENABLED, K.SYNC_PENDING, K.SYNC_DIRTY], function (r) {
+    void chrome.runtime.lastError;
+    syncEnabled = !!(r && r[K.SYNC_ENABLED] === true);
+    if (!syncEnabled) return;
+    if (r && r[K.SYNC_DIRTY]) {
+      var synth = {}; synth[K.SYNC_META] = {}; // القارئ يقرأ اللقطة الحاضرة لا الحدث
+      CMLSync.handleSyncChange(syncEnv, synth)
+        .then(function () { return CMLSync.clearDirty(syncEnv); })
+        .catch(function () {});
+    }
+    var t = r && r[K.SYNC_PENDING];
+    if (!t) return;
+    var waited = Date.now() - t;
+    if (waited > CMLConst.SYNC_WAKE_GRACE_MS) {
+      CMLSync.handleLocalChange(syncEnv, null).catch(function () {});
+    } else if (!syncTimer) {
+      syncTimer = setTimeout(function () {
+        syncTimer = null;
+        CMLSync.handleLocalChange(syncEnv, null).catch(function () {});
+      }, CMLConst.SYNC_WAKE_GRACE_MS - waited);
+    }
+  });
+}
+syncWakeCheck();

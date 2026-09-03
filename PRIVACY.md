@@ -6,7 +6,7 @@
 
 لا يجمع هذا الامتداد أي بيانات شخصية، **ولا يخزّن شيئًا مما يظهر على شاشتك ولا يرسله إلى أي
 جهة**. يعمل بالكامل داخل متصفحك. الاستثناء الوحيد: إن فعّلتَ المزامنة الاختيارية (وهي مطفأة
-افتراضيًّا) رُفعت تصحيحاتُك وقواعدُك — دون إعداداتك ودون أي شيء يُقرأ من الصفحات — عبر
+افتراضيًّا) رُفعت تصحيحاتُك وقواعدُك — دون إعداداتك ودون شيءٍ من محتواك أو محادثاتك — عبر
 مزامنة كروم إلى حسابك في جوجل، وتبقى لك أزرار إيقافها ومسح ما رُفع. (التفصيل في قسم
 «المزامنة الاختيارية» أدناه.)
 
@@ -26,14 +26,21 @@
 - **نصّ محادثاتك مستثنًى أصلًا:** الترجمة لا تلمس متن الرسائل إطلاقًا — لا رسائلك ولا ردود
   Claude. (انظر `inChatContent` في `engine.js`.)
 - **لا يحتفظ بشيء:** لا عناوين محادثاتك، ولا أسماء مشاريعك، ولا نصوص رسائلك، ولا أي شيء تراه.
-- **لا اتصال بأي خادم للامتداد:** لا يستخدم أي خدمة خارجية أو طرف ثالث، وكل ملفاته
-  (القاموس والخطوط) مضمّنة محليًّا. (والمزامنة الاختيارية أدناه لا تغيّر هذا: الامتداد
-  لا يفتح اتصالًا — المتصفح نفسه هو من ينقلها ضمن مزامنة حسابك.)
+- **لا خادم لنا ولا خدمة خارجية:** لا تحليلات ولا تتبّع ولا طرف ثالث، وكل ملفاته
+  (القاموس والخطوط) مضمّنة محليًّا. والطلبات الشبكية الوحيدة التي يفتحها الامتداد
+  تقع **بضغطةٍ منك** وتقصد ملفات claude.ai العامة وحدها: «فحص الموقع» و«طبيب
+  الاتجاه» (الموصوفان أدناه) — لا يُرسَل فيهما شيءٌ من عندك. (والمزامنة الاختيارية
+  أدناه لا يفتح لها الامتداد اتصالًا أصلًا: المتصفح نفسه ينقلها ضمن مزامنة حسابك.)
 - **الصلاحية الوحيدة `storage`:** لحفظ تفضيلاتك (تشغيل/إيقاف، الاتجاه، والكلمات التي تصحّحها)
   محليًّا على جهازك. لا تُشارَك مع أي جهة إلا ما اخترته أنت في «المزامنة الاختيارية» أدناه.
 - **«فحص الموقع» يجري بضغطة منك وحدك:** ولا يقرأ إلا ملفات البرمجة العامة للموقع (وهي نفسها
   التي ينزّلها متصفحك لعرض الصفحة) ليستخرج منها نصوص الواجهة ويعرف ما لم يُترجَم بعد.
-  **لا يمسّ صفحتك ولا محتواك**، ولا يتصل بغير موقع claude.ai، والنتيجة تبقى على جهازك.
+  **لا يمسّ صفحتك ولا محتواك**، والنتيجة تبقى على جهازك.
+
+- **«طبيب الاتجاه» كذلك يجري بضغطة منك وحدك:** يقرأ ملفات التنسيق (CSS) العامة للموقع
+  ليكشف ما استجدّ منها ولا يقلبه محرّك الاتجاه بعد. ونطاق ما يطلبه الفحصان: أصلُ الصفحة
+  نفسه، وclaude.ai، وanthropic.com (فمن هناك يُقدِّم الموقعُ ملفاته) — **ولا يُرسَل في
+  أيٍّ منهما شيءٌ من عندك**، إنما تُقرأ ملفات الموقع كما يقرؤها متصفحك.
 
 - **عند الإزالة:** يمحو المتصفح تلقائيًّا كل ما حُفظ محليًّا؛ لا يبقى شيء ولا يُرسَل شيء.
   (ما في مساحة المزامنة — إن كنت فعّلتها — يتبع حسابك لا جهازك؛ انظر القسم التالي.)
@@ -41,7 +48,7 @@
 ### المزامنة الاختيارية بين أجهزتك
 
 الاستثناء الوحيد للقاعدة أعلاه: إن فعّلتَ المزامنة الاختيارية (وهي مطفأة افتراضيًّا) رُفعت
-تصحيحاتُك وقواعدُك — دون إعداداتك ودون أي شيء يُقرأ من الصفحات — عبر مزامنة كروم إلى
+تصحيحاتُك وقواعدُك — دون إعداداتك ودون شيءٍ من محتواك أو محادثاتك — عبر مزامنة كروم إلى
 حسابك في جوجل، وتبقى لك أزرار إيقافها ومسح ما رُفع. وتفصيل ذلك:
 
 - **مطفأة افتراضيًّا**، ولا تُفعَّل إلا بموافقة صريحة من صفحة الإعدادات، بعد لوحةٍ تعرض
@@ -78,7 +85,7 @@
 This extension collects no personal data, **stores nothing of what appears on your screen, and
 sends nothing anywhere**. It runs entirely inside your browser. The one exception: if you enable
 the optional cross-device sync (off by default), the corrections and smart rules you wrote
-yourself — never your settings, and never anything read from pages — are carried by Chrome's own
+yourself — never your settings, and never any of your content or conversations — are carried by Chrome's own
 sync to your Google account, and buttons to stop it and to wipe what was uploaded remain yours.
 (Details in the "Optional sync" section below.)
 
@@ -100,16 +107,24 @@ project is open source, so every line of this is yours to verify.
 - **Conversation content is excluded outright:** translation never touches message prose — neither
   yours nor Claude's. (See `inChatContent` in `engine.js`.)
 - **It keeps nothing:** no chat titles, project names, message text, or anything else you see.
-- **No network calls of its own:** no external service or third party; all files (dictionary and
-  fonts) are bundled locally. (The optional sync below does not change this: the extension opens
-  no connection — the browser itself carries that data as part of your account's sync.)
+- **No server of ours, and no third-party service:** no analytics, no tracking; all files
+  (dictionary and fonts) are bundled locally. The only network requests the extension ever opens
+  happen **when you press a button** and fetch claude.ai's own public files: the site scan and the
+  direction doctor (both below) — nothing of yours is sent in either. (The optional sync below
+  opens no connection at all from the extension: the browser itself carries that data as part of
+  your account's sync.)
 - **The only permission, `storage`,** saves your preferences (on/off, direction, and terms you
   fix) locally on your device. Nothing is shared beyond what you yourself opt into under
   "Optional sync" below.
 - **"Site scan" runs only when you press the button,** and reads only the site's public JavaScript
   bundles — the same files your browser already downloads to render the page — to extract
   interface strings and find those not translated yet. **It does not touch your page or your
-  content**, contacts no origin other than claude.ai, and the result stays on your device.
+  content**, and the result stays on your device.
+
+- **"Direction doctor" likewise runs only when you press it:** it reads the site's public CSS to
+  find newly shipped rules the direction engine does not mirror yet. Both features request only
+  the page's own origin, claude.ai, and anthropic.com (where the site serves its assets from) —
+  and **neither sends anything of yours**; they read the site's files as your browser does.
 
 - **On uninstall,** the browser automatically erases everything stored locally. (Data in the
   sync area — if you ever enabled sync — follows your account, not your device; see the next
@@ -118,9 +133,10 @@ project is open source, so every line of this is yours to verify.
 ### Optional sync between your devices
 
 The one exception to the rule above: if you enable the optional sync (off by default), the
-corrections and smart rules you wrote yourself — never your settings, and never anything read
-from pages — are carried by Chrome's own sync to your Google account, and buttons to stop it
-and to wipe what was uploaded remain yours. In detail:
+corrections and smart rules you wrote yourself — never your settings, and never any of your
+content or conversations — are carried by Chrome's own sync to your Google account, **which
+Google may be able to read unless you set a sync passphrase in Chrome itself**; buttons to stop
+it and to wipe what was uploaded remain yours. In detail:
 
 - **Off by default.** It activates only after an explicit consent panel in the options page
   that states everything below before anything is written.

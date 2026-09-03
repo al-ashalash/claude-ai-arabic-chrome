@@ -33,10 +33,14 @@
 - **لا يُخزَّن شيء مما يُقرأ، ولا يُراكَم، ولا يُرسَل** — لا إلى تخزين، ولا إلى خادم، ولا إلى
   أي مكان. والكتابة الدائمة الوحيدة تفضيلاتُك وتصحيحاتُك التي تكتبها بنفسك.
 - **نصّ المحادثات مستثنًى أصلًا** فلا تلمسه الترجمة — لا رسائلك ولا ردود Claude.
-- **لا تفتح الإضافة اتصالًا بأي خادم — أبدًا.** لا تحليلات، ولا تتبّع، ولا خدمة خارجية.
-- **الاستثناء الوحيد لمغادرة البيانات جهازك:** إن فعّلتَ المزامنة الاختيارية (وهي مطفأة
-  افتراضيًّا) حمل **كرومُ نفسُه** تصحيحاتِك وقواعدَك — دون إعداداتك ودون أي شيء يُقرأ من
-  الصفحات — إلى حسابك في جوجل بمزامنته المعتادة، لا باتصالٍ تفتحه الإضافة. وتبقى لك
+- **لا تتصل الإضافة بأي خادم من تلقاء نفسها.** لا تحليلات، ولا تتبّع، ولا خدمة خارجية،
+  ولا خادم لنا أصلًا. والاتصالان الوحيدان يقعان **بضغطةٍ منك** ويقصدان ملفات claude.ai
+  العامة وحدها: «فحص الموقع» (ليجد ما استُجدّ ولم يُترجَم) و«طبيب الاتجاه» (ليقرأ
+  ملفات التنسيق) — لا يُرسَل فيهما شيءٌ من عندك، إنما تُقرأ ملفات الموقع.
+- **الاستثناء الوحيد لمغادرة بياناتك جهازك:** إن فعّلتَ المزامنة الاختيارية (وهي مطفأة
+  افتراضيًّا) حمل **كرومُ نفسُه** تصحيحاتِك وقواعدَك — دون إعداداتك ودون شيءٍ من محتواك
+  أو محادثاتك — إلى حسابك في جوجل بمزامنته المعتادة، لا باتصالٍ تفتحه الإضافة.
+  **وجوجل قد تطّلع عليها ما لم تفعّل عبارة مرور المزامنة في كروم نفسه.** وتبقى لك
   أزرار إيقافها ومسح ما رُفع.
 - **لا تطلب صلاحية قراءة بياناتك في المواقع.** الصلاحية الوحيدة `storage` لحفظ تفضيلاتك
   على جهازك.
@@ -192,10 +196,15 @@ read page text as it walks the DOM, comparing it against a dictionary bundled in
 extension. Those reads are transient and match-only: **nothing read is stored, accumulated, or
 transmitted** — not to storage, not to a server, not anywhere. The only persistent writes are
 your own settings and the corrections you type. Conversation prose is excluded outright, and the
-extension requests no host permissions — only `storage`. The one exception: if you enable the
-optional cross-device sync (off by default), the corrections and smart rules you wrote yourself —
-never your settings, and never anything read from pages — are carried by Chrome's own sync to
-your Google account, and buttons to stop it and to wipe what was uploaded remain yours. We say
+extension requests no host permissions — only `storage`. The extension never contacts a server of
+its own — there is no server of ours; the only network requests it ever makes happen **when you
+press a button**, and they fetch claude.ai's own public files: the site scan (to find newly added
+untranslated strings) and the direction doctor (to read the site's stylesheets). Nothing of yours
+is sent in either. The one exception to data leaving your device: if you enable the optional
+cross-device sync (off by default), the corrections and smart rules you wrote yourself — never
+your settings, and never any of your content or conversations — are carried by Chrome's own sync
+to your Google account, **which Google may be able to read unless you set a sync passphrase in
+Chrome itself**; buttons to stop it and to wipe what was uploaded remain yours. We say
 it this precisely because an overreaching claim is weaker than an exact one, and this is open
 source: verify it yourself. See the [privacy policy](PRIVACY.md).
 

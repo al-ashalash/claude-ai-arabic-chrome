@@ -1,0 +1,417 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>sync test</title>
+<!--
+  اختبار المزامنة الاختيارية (المرحلة ٦). يقود CMLSync الحقيقي (cml-sync.js) عبر
+  بيئتَي env مبنيتين على مخزنين محليين منفصلين + مخزن sync واحد مشترك تُنفَّذ فيه
+  حصص كروم — وهذه هي محاكاة الجهازين: «أ» و«ب» يتقاسمان السحابة ولا يتقاسمان
+  شيئًا محليًّا، والساعة منطقية (CLOCK) تُقدَّم يدويًّا فتصير طوابع at حتميةً.
+
+  التسليم بين الجهازين يدوي عمدًا: أحداث onChanged للسحابة تُجمع في طابور ثم تُسلَّم
+  بالتتابع بعد اكتمال دفعة صاحبها — كما يسلّمها كروم فعلًا (لا متزامنًا داخل كتابة
+  الدافع)، ولأن قفل busy في الوحدة واحدٌ للصفحة كلها فالتسليم المتزامن كان سيُسقط
+  الحدث بصمت («busy») ويوهم نجاحًا. ملاحظة بنيوية: القارئ يفكّ اللقطة الحاضرة لا
+  لقطة لحظة الحدث، فحدثٌ متأخر عن لقطةٍ دُهست يخرج «seen» أو «self» — وهذا مقصود.
+
+  التسع (بترقيم المهمة): ١) التغليف والفك والتمزيق ٢) بوابة الموافقة ٣) أول دفعة
+  والميتا آخِرًا ٤) الاستقبال والاتحاد والتقارب (ومعه ٧: حارسا الصدى) ٥) تعارض
+  المفتاح الواحد وفوز الطابع الأحدث ٦) شواهد الحذف وعدم الإحياء وتشذيبها
+  ٨) الفيض ورفض الحصة (مع فحوص قشرة sync نفسها) ٩) محو السحابة وسلامة الأجهزة.
+
+  العقد: document.title = "synctest N/N" — يتساوى الطرفان فقط إذا نجح كل شيء،
+  وعدّاد window.onerror يُفحص صفرًا في الخاتمة.
+-->
+<style>body{font-family:system-ui;padding:16px;max-width:900px;margin:auto}
+table{border-collapse:collapse;width:100%;margin-top:12px}
+td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
+.ok{color:#127a2b;font-weight:700}.bad{color:#b00;font-weight:700}</style>
+
+<h1>اختبار المزامنة الاختيارية (المرحلة ٦)</h1>
+<table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th><th></th></tr></thead><tbody></tbody></table>
+
+<script>
+// عدّاد الأخطاء غير الملتقطة — يُثبَّت قبل تحميل أي شيء ليصطاد أخطاء الوحدة أيضًا
+var jsErrors = 0;
+window.onerror = function () { jsErrors++; };
+document.title = "synctest …";
+</script>
+<script src="_chrome-mock.js"></script>
+<script src="../extension/cml-const.js"></script>
+<script src="../extension/cml-sync.js"></script>
+<script>
+var tb = document.querySelector("#tbl tbody"), pass = 0, total = 0;
+function check(name, expect, got) {
+  total++; var ok = String(expect) === String(got); if (ok) pass++;
+  var tr = document.createElement("tr");
+  [name, expect, got].forEach(function (v) { var td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+  var s = document.createElement("td"); s.className = ok ? "ok" : "bad"; s.textContent = ok ? "✓" : "✗"; tr.appendChild(s);
+  tb.appendChild(tr);
+}
+
+var C = CMLConst, K = C.K;
+function ub(s) { return new TextEncoder().encode(s).length; }
+function cp(v) { return JSON.parse(JSON.stringify(v)); }
+function has(o, k) { return Object.prototype.hasOwnProperty.call(o || {}, k); }
+function hashOf(mock) {
+  return CMLSync.hashPayload({ overrides: mock.localStore[K.OVERRIDES] || {}, patterns: mock.localStore[K.USER_PATTERNS] || [] });
+}
+
+// ===== السقالة: السحابة المشتركة وجهازان ومصادر الزمن والتسليم =====
+var T0 = 1700000000000;
+var CLOCK = { t: T0 };
+var SHARED = makeChromeMock({ session: false, sync: { itemBytes: 8192, totalBytes: 102400 } });
+var MA = makeChromeMock({ session: false });
+var MB = makeChromeMock({ session: false });
+
+// أحداث السحابة تُجمع هنا ثم تُسلَّم يدويًّا (انظر رأس الملف: قفل busy واحد)
+var cloudEvents = [];
+SHARED.chrome.storage.onChanged.addListener(function (ch, area) {
+  if (area === "sync") cloudEvents.push(ch);
+});
+function drainCloud() { var evs = cloudEvents.slice(); cloudEvents.length = 0; return evs; }
+
+function makeEnv(devMock, cloudMock) {
+  return {
+    getLocal: function (keys, cb) { devMock.chrome.storage.local.get(keys, cb); },
+    setLocal: function (obj, cb) { devMock.chrome.storage.local.set(obj, function () { cb(null); }); },
+    getSyncAll: function (cb) { cloudMock.chrome.storage.sync.get(null, cb); },
+    setSync: function (obj, cb) {
+      cloudMock.chrome.storage.sync.set(obj, function () {
+        var e = cloudMock.chrome.runtime.lastError;
+        cb(e ? (e.message || String(e)) : null);
+      });
+    },
+    removeSync: function (keys, cb) {
+      cloudMock.chrome.storage.sync.remove(keys, function () {
+        var e = cloudMock.chrome.runtime.lastError;
+        cb(e ? (e.message || String(e)) : null);
+      });
+    },
+    now: function () { return CLOCK.t; },
+  };
+}
+var envA = makeEnv(MA, SHARED), envB = makeEnv(MB, SHARED);
+
+async function deliver(env, evs) {
+  var out = [];
+  for (var i = 0; i < evs.length; i++) {
+    var r = await CMLSync.handleSyncChange(env, evs[i]);
+    out.push(r && r.done);
+  }
+  return out;
+}
+
+async function main() {
+  // ================= ١) التغليف والفك: ٤٠ك+ ⇒ شرائح، والممزّق «لا لقطة» =================
+  check("بايتات UTF-8 لا أحرف (العربي حرفه بايتان)", "8/3", CMLSync.byteLen("عربي") + "/" + CMLSync.byteLen("abc"));
+
+  var bigOv = { ar: {} };
+  for (var i = 0; i < 300; i++) {
+    bigOv.ar["Interface phrase number " + i + " with padding for realistic length"] =
+      "ترجمة عربية للعبارة رقم " + i + " مع حشو يجعل الطول واقعيًا";
+  }
+  var payload1 = { overrides: bigOv, patterns: [{ s: "Send", t: "أرسل" }] };
+  var packed1 = CMLSync.pack(payload1, { rev: 9, device: "dev-x", now: T0 });
+  check("حمولة كبيرة تتشرّح إلى أكثر من ٥ شرائح", "true", packed1.meta.chunks > 5);
+  var viol = 0, ck;
+  for (ck in packed1.sets) {
+    if (ck.indexOf(K.SYNC_CHUNK_PREFIX) === 0 &&
+        ub(ck) + ub(JSON.stringify(packed1.sets[ck])) > C.SYNC_ITEM_BYTES) viol++;
+  }
+  check("كل شريحة تحت سقف بايتات العنصر", "0", viol);
+  check("المجموع يسع الحصة (fits)", "true", packed1.fits);
+
+  var un1 = CMLSync.unpack(packed1.sets);
+  check("الفكّ يعيد الحمولة نفسها (البصمتان متطابقتان)", "true",
+        !!un1 && un1.meta.hash === CMLSync.hashPayload(payload1) &&
+        CMLSync.hashPayload(un1.payload) === un1.meta.hash);
+  check("قيمة عيّنة تعود حرفًا بحرف بعد الفك",
+        bigOv.ar["Interface phrase number 0 with padding for realistic length"],
+        un1 && un1.payload.overrides.ar["Interface phrase number 0 with padding for realistic length"]);
+  check("عدّ العناصر بعد الفك يطابق الميتا", "true",
+        !!un1 && CMLSync.countPayload(un1.payload) === un1.meta.count && un1.meta.count === 301);
+
+  var s2 = {}; for (ck in packed1.sets) s2[ck] = packed1.sets[ck];
+  var t2k = K.SYNC_CHUNK_PREFIX + "2";
+  s2[t2k] = s2[t2k].substring(0, 10) + "X" + s2[t2k].substring(11);
+  check("شريحة معبوثة ⇒ unpack null (لقطة ممزّقة تُهمل بصمت)", "null", String(CMLSync.unpack(s2)));
+  var s3 = {}; for (ck in packed1.sets) s3[ck] = packed1.sets[ck];
+  delete s3[K.SYNC_CHUNK_PREFIX + "3"];
+  check("شريحة مفقودة ⇒ unpack null", "null", String(CMLSync.unpack(s3)));
+  check("لقطة فارغة أو معدومة ⇒ null", "null/null", String(CMLSync.unpack({})) + "/" + String(CMLSync.unpack(null)));
+
+  // ================= ٢) بوابة الموافقة: قبل العلم لا تخرج بايتة واحدة =================
+  var ovA = { ar: { "Color": "أصلي", "Doomed": "سيُحذف", "Shared key": "قيمة مشتركة" } };
+  var patA = [{ s: "Regenerate", t: "أعد التوليد" }];
+  MA.localStore[K.OVERRIDES] = ovA;
+  MA.localStore[K.USER_PATTERNS] = patA;
+  MA.localStore[K.SYNC_DEVICE] = "devA";
+  var ch2 = {}; ch2[K.OVERRIDES] = { newValue: ovA };
+  var res2 = await CMLSync.handleLocalChange(envA, ch2);
+  check("العلم غائب: handleLocalChange يرفض", "disabled", res2 && res2.done);
+  check("صفر كتابات سحابة قبل الموافقة", "0", SHARED.syncWrites.length);
+  MA.localStore[K.SYNC_PENDING] = 123;
+  var res2b = await CMLSync.handleLocalChange(envA, null);
+  check("الإيقاظ والعلم غائب: pending يُصفَّر بلا دفع", "disabled/0/0",
+        (res2b && res2b.done) + "/" + MA.localStore[K.SYNC_PENDING] + "/" + SHARED.syncWrites.length);
+
+  // ================= ٣) أول دفعة: الشرائح ثم الميتا آخِرًا، والحال صادقة =================
+  MA.localStore[K.SYNC_ENABLED] = true;
+  CLOCK.t = T0 + 1000;
+  var res3 = await CMLSync.handleLocalChange(envA, ch2);
+  check("الموافقة قائمة: أول دفعة تنجح", "pushed", res3 && res3.done);
+  check("كتابتا سحابة لا غير (شرائح ثم ميتا)", "2", SHARED.syncWrites.length);
+  var w0 = SHARED.syncWrites[0] || {}, w1 = SHARED.syncWrites[1] || {};
+  check("الكتابة الأولى شرائح بلا ميتا", "true", has(w0, K.SYNC_CHUNK_PREFIX + "0") && !has(w0, K.SYNC_META));
+  check("الميتا تُكتب آخِرًا وحدها", K.SYNC_META, Object.keys(w1).join(","));
+  var m3 = SHARED.syncStore[K.SYNC_META] || {};
+  check("ميتا اللقطة: الجهاز/الدفعة/الشرائح", "devA/1/1", m3.device + "/" + m3.rev + "/" + m3.chunks);
+  var st3 = MA.localStore[K.SYNC_STATE] || {};
+  var repack3 = CMLSync.pack({ overrides: ovA, patterns: patA }, { rev: 1, device: "devA", now: CLOCK.t });
+  check("cml_sync_state صادقة: الحال/العدّ/الدفعة", "ok/4/1", st3.status + "/" + st3.count + "/" + st3.rev);
+  check("بايتات الحال تطابق الحزم الفعلي", "true", st3.bytes === repack3.bytes && st3.bytes > 0);
+  check("lasthash = بصمة المدفوع", "true",
+        MA.localStore[K.SYNC_LASTHASH] === CMLSync.hashPayload({ overrides: ovA, patterns: patA }));
+  check("pending صُفِّر بعد النجاح", "0", MA.localStore[K.SYNC_PENDING]);
+
+  // ================= ٤) الاستقبال على «ب»: اتحادٌ أول ثم دفعُ الزيادة والتقارب =================
+  var ovB = { ar: { "B only": "خاص بالجهاز ب" } };
+  var patB = [{ s: "Retry", t: "أعد المحاولة" }];
+  MB.localStore[K.SYNC_ENABLED] = true;
+  MB.localStore[K.SYNC_DEVICE] = "devB";
+  MB.localStore[K.OVERRIDES] = ovB;
+  MB.localStore[K.USER_PATTERNS] = patB;
+  var preB = cp(ovB);
+  CLOCK.t = T0 + 2000;
+  var evsA = drainCloud();
+  check("طابور السحابة يحمل حدثَي دفعة أ", "2", evsA.length);
+  var r4 = await deliver(envB, evsA);
+  check("وصول لقطة أ إلى ب: دمج ثم دفع الزيادة", "merged+push,self", r4.join(","));
+  var bo = (MB.localStore[K.OVERRIDES] || {}).ar || {};
+  check("اتحاد ب: مفاتيح أ الثلاثة + مفتاحه الخاص", "4/خاص بالجهاز ب",
+        Object.keys(bo).length + "/" + bo["B only"]);
+  check("قواعد ب: اتحاد قواعد الطرفين", "2", (MB.localStore[K.USER_PATTERNS] || []).length);
+  CLOCK.t = T0 + 3000;
+  var evsB = drainCloud();
+  var r4b = await deliver(envA, evsB);
+  check("عودة لقطة ب إلى أ: دمجٌ بلا دفع جديد", "merged,seen", r4b.join(","));
+  var ao = (MA.localStore[K.OVERRIDES] || {}).ar || {};
+  check("أ نال مفتاح ب الخاص", "خاص بالجهاز ب", ao["B only"]);
+  check("تقارب: البصمتان وlasthash سواء والقواعد ٢", "true",
+        hashOf(MA) === hashOf(MB) &&
+        MA.localStore[K.SYNC_LASTHASH] === MB.localStore[K.SYNC_LASTHASH] &&
+        (MA.localStore[K.USER_PATTERNS] || []).length === 2);
+
+  // ================= ٧) حارسا الصدى: لا دورانَ للدفعات على نفسها =================
+  var jl7 = SHARED.syncWrites.length;
+  var ch7 = {}; ch7[K.OVERRIDES] = { oldValue: preB, newValue: cp(MB.localStore[K.OVERRIDES]) };
+  var r7 = await CMLSync.handleLocalChange(envB, ch7);
+  check("تغيّر محلي بصمته هي هي: صدى دمجٍ لا دفعة", "echo", r7 && r7.done);
+  check("سجل السحابة لم يزد بعد الصدى", "0", SHARED.syncWrites.length - jl7);
+  var selfMeta = {}; selfMeta[K.SYNC_META] = { newValue: cp(SHARED.syncStore[K.SYNC_META]) };
+  var r7b = await CMLSync.handleSyncChange(envB, selfMeta);
+  check("حدث ميتا بهوية الجهاز نفسه يُهمل مبكرًا", "self", r7b && r7b.done);
+  var selfChunk = {}; selfChunk[K.SYNC_CHUNK_PREFIX + "0"] = { newValue: "x" };
+  var r7c = await CMLSync.handleSyncChange(envB, selfChunk);
+  check("حدث شرائح للقطتنا يُهمل عبر هوية اللقطة", "self", r7c && r7c.done);
+  check("لا كتابات سحابة من الحارسين", "0", SHARED.syncWrites.length - jl7);
+
+  // ================= ٥) تعارض المفتاح الواحد: طابع المجموعة الأحدث يفوز عند الطرفين =================
+  CLOCK.t = T0 + 4000;
+  var ovA5old = cp(MA.localStore[K.OVERRIDES]);
+  var ovA5 = cp(ovA5old); ovA5.ar["Color"] = "لون-أ";
+  MA.localStore[K.OVERRIDES] = ovA5;
+  MA.localStore[K.SYNC_PENDING] = CLOCK.t;
+  var ch5a = {}; ch5a[K.OVERRIDES] = { oldValue: ovA5old, newValue: ovA5 };
+  var r5a = await CMLSync.handleLocalChange(envA, ch5a);
+  check("تعديل أ (الأقدم طابعًا) يُدفع", "pushed", r5a && r5a.done);
+  CLOCK.t = T0 + 5000;
+  var ovB5old = cp(MB.localStore[K.OVERRIDES]);
+  var ovB5 = cp(ovB5old); ovB5.ar["Color"] = "لون-ب";
+  MB.localStore[K.OVERRIDES] = ovB5;
+  MB.localStore[K.SYNC_PENDING] = CLOCK.t; // كما يكتبه العامل عند جدولة الدفع — به يُعرف طابع التعديل
+  var ch5b = {}; ch5b[K.OVERRIDES] = { oldValue: ovB5old, newValue: ovB5 };
+  var r5b = await CMLSync.handleLocalChange(envB, ch5b);
+  check("تعديل ب الأحدث: دمجٌ قبل الدفع وقيمتُه تبقى", "pushed/لون-ب",
+        (r5b && r5b.done) + "/" + ((MB.localStore[K.OVERRIDES] || {}).ar || {})["Color"]);
+  check("pending ب صُفِّر بعد الدفع", "0", MB.localStore[K.SYNC_PENDING]);
+  CLOCK.t = T0 + 6000;
+  var evs5 = drainCloud(); // دفعتا أ وب معًا — ٤ أحداث بترتيب وقوعها
+  var r5c = await deliver(envA, evs5);
+  check("تسليم الطابور لأ: تبنّي الأحدث ثم أصداء", "merged,self,seen,seen", r5c.join(","));
+  check("أ تبنّى قيمة الطابع الأحدث", "لون-ب", ((MA.localStore[K.OVERRIDES] || {}).ar || {})["Color"]);
+  check("الطرفان متقاربان بعد الحسم", "true", hashOf(MA) === hashOf(MB));
+
+  // ================= ٦) شواهد الحذف: الحذف ينتشر ولا يُحييه القديم =================
+  CLOCK.t = T0 + 7000;
+  var ovB6old = cp(MB.localStore[K.OVERRIDES]);
+  var ovB6 = cp(ovB6old); ovB6.ar["B extra2"] = "زيادة لاحقة من ب";
+  MB.localStore[K.OVERRIDES] = ovB6;
+  MB.localStore[K.SYNC_PENDING] = CLOCK.t;
+  var ch6b = {}; ch6b[K.OVERRIDES] = { oldValue: ovB6old, newValue: ovB6 };
+  var r6a = await CMLSync.handleLocalChange(envB, ch6b);
+  check("دفعة ب (لم يرها أ بعد) قائمة", "pushed", r6a && r6a.done);
+
+  CLOCK.t = T0 + 8000;
+  var T6b = CLOCK.t;
+  var ovA6old = cp(MA.localStore[K.OVERRIDES]);
+  var ovA6 = cp(ovA6old); delete ovA6.ar["Doomed"];
+  MA.localStore[K.OVERRIDES] = ovA6;
+  MA.localStore[K.SYNC_PENDING] = T6b;
+  var ch6a = {}; ch6a[K.OVERRIDES] = { oldValue: ovA6old, newValue: ovA6 };
+  var r6b = await CMLSync.handleLocalChange(envA, ch6a);
+  var tombsA = MA.localStore[K.SYNC_TOMBS] || {};
+  check("حذف أ يسجّل شاهدًا موقوتًا من فرق الكتابة", String(T6b), tombsA["ar|Doomed"]);
+  check("لقطة ب الأقدم لا تُحيي المحذوف والدفع يمضي", "pushed/false",
+        (r6b && r6b.done) + "/" + has((MA.localStore[K.OVERRIDES] || {}).ar, "Doomed"));
+  check("أ نال إضافة ب رغم فوزه بالطابع", "زيادة لاحقة من ب",
+        ((MA.localStore[K.OVERRIDES] || {}).ar || {})["B extra2"]);
+  var cloud6 = CMLSync.unpack(cp(SHARED.syncStore));
+  check("اللقطة المدفوعة خالية من المحذوف", "true",
+        !!cloud6 && !has(cloud6.payload.overrides.ar, "Doomed"));
+  CLOCK.t = T0 + 9000;
+  var evs6 = drainCloud(); // دفعة ب ثم دفعة أ — ٤ أحداث
+  var r6c = await deliver(envB, evs6);
+  check("تسليم الطابور لب: دمج الأحدث وصداه", "merged,self,seen,seen", r6c.join(","));
+  check("انتشر الحذف إلى ب بالغياب", "false", has((MB.localStore[K.OVERRIDES] || {}).ar, "Doomed"));
+  check("تقارب بعد انتشار الحذف", "true", hashOf(MA) === hashOf(MB));
+
+  // تشذيب الدفتر: وحدات pruneTombs الصرفة
+  var nowP = CLOCK.t;
+  var pr1 = CMLSync.pruneTombs({ old: nowP - C.SYNC_TOMB_TTL_MS - 1, fresh: nowP - 5, bad: "x" }, nowP);
+  check("التشذيب: يسقط المتقادمَ وغيرَ الرقمي ويبقي الطازج", "fresh", Object.keys(pr1).join(","));
+  var many = {}; for (var pi = 1; pi <= C.SYNC_TOMB_MAX + 50; pi++) many["t" + pi] = nowP - pi;
+  var pr2 = CMLSync.pruneTombs(many, nowP);
+  check("التشذيب: السقف يقصّ إلى الحد", String(C.SYNC_TOMB_MAX), Object.keys(pr2).length);
+  check("التشذيب: الأقدم يُسقط أولًا", "true/false",
+        has(pr2, "t" + C.SYNC_TOMB_MAX) + "/" + has(pr2, "t" + (C.SYNC_TOMB_MAX + 1)));
+
+  // ★ حارس انحراف الساعة (دحضٌ مؤكد أثناء الإغلاق): جهازٌ طابعُه في المستقبل بعيدًا
+  // كان يجعل «الحذف بالغياب» صادقًا أبدًا فتُمحى تصحيحاتُ الجهاز السليم في كل دمج
+  // بلا رجعة. الحارس يمنع الحذف وحده ويُبقي الاتحاد — والحذف السليم يبقى عاملًا.
+  var skewLocal = {
+    overrides: { ar: { "Mine": "تصحيحي المحلي" } }, patterns: [], tombs: {},
+    at: nowP, state: { at: nowP }, everSynced: true,
+  };
+  var skewRemote = {
+    payload: { overrides: { ar: { "Other": "من الجهاز الآخر" } }, patterns: [] },
+    meta: { v: 1, rev: 7, at: nowP + 365 * 24 * 3600 * 1000, device: "skewed", count: 1, chunks: 1 },
+  };
+  var skewM = CMLSync.mergeIn(skewLocal, skewRemote, nowP);
+  check("★ ساعةٌ منحرفة لا تمحو التصحيح المحلي (اتحادٌ لا حذف)", "true",
+        String(has(skewM.overrides.ar || {}, "Mine")));
+  check("ومع ذلك تُتبنّى مفاتيح اللقطة المنحرفة", "true",
+        String(has(skewM.overrides.ar || {}, "Other")));
+  var saneM = CMLSync.mergeIn(
+    { overrides: { ar: { "Gone": "سيُحذف" } }, patterns: [], tombs: {},
+      at: nowP - 60000, state: { at: nowP - 60000 }, everSynced: true },
+    { payload: { overrides: { ar: {} }, patterns: [] },
+      meta: { v: 1, rev: 8, at: nowP, device: "B", count: 0, chunks: 1 } },
+    nowP);
+  check("والحذف بالغياب يبقى عاملًا مع ساعةٍ سليمة", "false",
+        String(has(saneM.overrides.ar || {}, "Gone")));
+
+  // ================= ٨) الفيض ورفض الحصة: لا شرائح جزئية أبدًا =================
+  // فيض الحزم (fits=false): يُضيَّق سقف الوحدة مؤقتًا — الوحدة تقرأ الثابت وقت النداء
+  CLOCK.t = T0 + 9500;
+  var OLD_TOTAL = C.SYNC_TOTAL_BYTES;
+  var SHARED2 = makeChromeMock({ session: false, sync: { itemBytes: 8192, totalBytes: 3000 } });
+  var MC = makeChromeMock({ session: false });
+  var envC = makeEnv(MC, SHARED2);
+  var ovC = { ar: {} };
+  for (var ci = 0; ci < 40; ci++) ovC.ar["Overflow source phrase " + ci] = "قيمة عربية طويلة نسبيًا للفيض رقم " + ci;
+  MC.localStore[K.SYNC_ENABLED] = true;
+  MC.localStore[K.SYNC_DEVICE] = "devC";
+  MC.localStore[K.OVERRIDES] = ovC;
+  MC.localStore[K.SYNC_PENDING] = CLOCK.t;
+  var p8, r8;
+  try {
+    C.SYNC_TOTAL_BYTES = 3000;
+    p8 = CMLSync.pack({ overrides: ovC, patterns: [] }, { rev: 1, device: "devC", now: CLOCK.t });
+    r8 = await CMLSync.handleLocalChange(envC, null);
+  } finally { C.SYNC_TOTAL_BYTES = OLD_TOTAL; }
+  check("الحزم فوق السقف: fits=false والحاجة فوقه", "true", !!p8 && p8.fits === false && p8.need > 3000);
+  check("handleLocalChange ينتهي فيضًا", "overflow", r8 && r8.done);
+  var st8 = MC.localStore[K.SYNC_STATE] || {};
+  check("الحال overflow بحاجة صادقة need>0", "true",
+        st8.status === "overflow" && st8.need === p8.need && st8.need > 0);
+  check("لا شرائح جزئية عند الفيض", "0/0",
+        SHARED2.syncWrites.length + "/" + Object.keys(SHARED2.syncStore).length);
+  check("pending صُفِّر (الإعادة لن تصلح فيضًا)", "0", MC.localStore[K.SYNC_PENDING]);
+
+  // رفض السحابة نفسِها (حصة القشرة الكلية): حال error وpending باقٍ لإعادة المحاولة
+  CLOCK.t = T0 + 9600;
+  var SHARED3 = makeChromeMock({ session: false, sync: { itemBytes: 8192, totalBytes: 400 } });
+  var MD = makeChromeMock({ session: false });
+  var envD = makeEnv(MD, SHARED3);
+  var ovD = { ar: {} };
+  for (var di = 0; di < 8; di++) ovD.ar["Error path phrase " + di] = "قيمة للمسار الخاطئ رقم " + di;
+  MD.localStore[K.SYNC_ENABLED] = true;
+  MD.localStore[K.SYNC_DEVICE] = "devD";
+  MD.localStore[K.OVERRIDES] = ovD;
+  MD.localStore[K.SYNC_PENDING] = CLOCK.t;
+  var r8b = await CMLSync.handleLocalChange(envD, null);
+  var st8b = MD.localStore[K.SYNC_STATE] || {};
+  check("رفض السحابة الكلي: حال error برسالة الحصة", "error/true",
+        (r8b && r8b.done) + "/" + /QUOTA/.test(st8b.error || ""));
+  check("pending باقٍ فيُعاد الدفع عند الإيقاظ", String(CLOCK.t), MD.localStore[K.SYNC_PENDING]);
+  check("الرفض ذرّي: لا سجل ولا مخزون", "0/0",
+        SHARED3.syncWrites.length + "/" + Object.keys(SHARED3.syncStore).length);
+
+  // فحوص القشرة نفسها: الرفض بالعنصر، وعقد lastError، والبثّ بحرف sync
+  var SM = makeChromeMock({ session: false, sync: { itemBytes: 50, totalBytes: 10000 } });
+  var evs8m = [];
+  SM.chrome.storage.onChanged.addListener(function (chg, area) { evs8m.push(area + ":" + Object.keys(chg).join(",")); });
+  var seen8 = null, after8 = "unset";
+  SM.chrome.storage.sync.set({ big: "0123456789012345678901234567890123456789012345678901234567890" }, function () {
+    seen8 = SM.chrome.runtime.lastError && SM.chrome.runtime.lastError.message;
+  });
+  after8 = String(SM.chrome.runtime.lastError);
+  check("القشرة: عنصر فوق سقفه يُرفض ذرّيًّا (لا كتابة ولا سجل ولا بث)", "true",
+        /QUOTA_BYTES_PER_ITEM/.test(seen8 || "") && SM.syncWrites.length === 0 &&
+        !has(SM.syncStore, "big") && evs8m.length === 0);
+  check("القشرة: lastError منصوب داخل النداء ممسوح بعده", "undefined", after8);
+  SM.chrome.storage.sync.set({ a: 1 }, function () {});
+  check("القشرة: الكتابة السليمة تُسجَّل وتُبثّ بحرف sync", "sync:a/1", evs8m[0] + "/" + SM.syncWrites.length);
+
+  // ================= ٩) محو السحابة: الجهاز الآخر سليم محليًّا وقادر على البناء =================
+  CLOCK.t = T0 + 10000;
+  var beforeA = JSON.stringify({ o: MA.localStore[K.OVERRIDES], p: MA.localStore[K.USER_PATTERNS] });
+  var beforeB = JSON.stringify({ o: MB.localStore[K.OVERRIDES], p: MB.localStore[K.USER_PATTERNS] });
+  var wipeKeys = Object.keys(SHARED.syncStore);
+  SHARED.chrome.storage.sync.remove(wipeKeys, function () {});
+  check("المحو أزال الميتا والشرائح كلها", "0", Object.keys(SHARED.syncStore).length);
+  // القشرة صامتة عند الحذف (عقدها الموثّق) — فحدثُ المحو يُصاغ كما يبثه كروم الحقيقي
+  var wipeEv = {}; wipeEv[K.SYNC_META] = { oldValue: { v: 1 } };
+  var r9a = await CMLSync.handleSyncChange(envB, wipeEv);
+  var r9b = await CMLSync.handleSyncChange(envA, wipeEv);
+  check("حدث المحو على الجهازين: لقطة ممزّقة تُهمل", "torn/torn",
+        (r9a && r9a.done) + "/" + (r9b && r9b.done));
+  check("محليات الجهازين لم تُمسّ (لا دمج هدّام للفراغ)", "true",
+        beforeA === JSON.stringify({ o: MA.localStore[K.OVERRIDES], p: MA.localStore[K.USER_PATTERNS] }) &&
+        beforeB === JSON.stringify({ o: MB.localStore[K.OVERRIDES], p: MB.localStore[K.USER_PATTERNS] }));
+  CLOCK.t = T0 + 11000;
+  var ovB9old = cp(MB.localStore[K.OVERRIDES]);
+  var ovB9 = cp(ovB9old); ovB9.ar["After wipe"] = "بعد المحو";
+  MB.localStore[K.OVERRIDES] = ovB9;
+  var ch9 = {}; ch9[K.OVERRIDES] = { oldValue: ovB9old, newValue: ovB9 };
+  var r9c = await CMLSync.handleLocalChange(envB, ch9);
+  var cloud9 = CMLSync.unpack(cp(SHARED.syncStore));
+  check("ب بعد المحو قادر: دفعة جديدة تعيد بناء السحابة", "pushed/بعد المحو",
+        (r9c && r9c.done) + "/" + (cloud9 && cloud9.payload.overrides.ar["After wipe"]));
+}
+
+function finish() {
+  check("لا أخطاء JS غير ملتقطة", "0", jsErrors);
+  document.title = "synctest " + pass + "/" + total;
+  var h = document.createElement("p");
+  h.className = pass === total ? "ok" : "bad";
+  h.textContent = "SYNCTEST: " + pass + "/" + total + (pass === total ? " — all pass" : " — FAIL");
+  document.body.appendChild(h);
+}
+
+main().then(finish, function (e) {
+  check("استثناء غير متوقع في مجرى الاختبار", "(لا شيء)", String(e && e.message || e));
+  finish();
+});
+</script>

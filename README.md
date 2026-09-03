@@ -33,7 +33,11 @@
 - **لا يُخزَّن شيء مما يُقرأ، ولا يُراكَم، ولا يُرسَل** — لا إلى تخزين، ولا إلى خادم، ولا إلى
   أي مكان. والكتابة الدائمة الوحيدة تفضيلاتُك وتصحيحاتُك التي تكتبها بنفسك.
 - **نصّ المحادثات مستثنًى أصلًا** فلا تلمسه الترجمة — لا رسائلك ولا ردود Claude.
-- **لا اتصال بأي خادم.** لا تحليلات، ولا تتبّع، ولا خدمة خارجية.
+- **لا تفتح الإضافة اتصالًا بأي خادم — أبدًا.** لا تحليلات، ولا تتبّع، ولا خدمة خارجية.
+- **الاستثناء الوحيد لمغادرة البيانات جهازك:** إن فعّلتَ المزامنة الاختيارية (وهي مطفأة
+  افتراضيًّا) حمل **كرومُ نفسُه** تصحيحاتِك وقواعدَك — دون إعداداتك ودون أي شيء يُقرأ من
+  الصفحات — إلى حسابك في جوجل بمزامنته المعتادة، لا باتصالٍ تفتحه الإضافة. وتبقى لك
+  أزرار إيقافها ومسح ما رُفع.
 - **لا تطلب صلاحية قراءة بياناتك في المواقع.** الصلاحية الوحيدة `storage` لحفظ تفضيلاتك
   على جهازك.
 
@@ -188,9 +192,12 @@ read page text as it walks the DOM, comparing it against a dictionary bundled in
 extension. Those reads are transient and match-only: **nothing read is stored, accumulated, or
 transmitted** — not to storage, not to a server, not anywhere. The only persistent writes are
 your own settings and the corrections you type. Conversation prose is excluded outright, and the
-extension requests no host permissions — only `storage`. We say it this precisely because an
-overreaching claim is weaker than an exact one, and this is open source: verify it yourself. See
-the [privacy policy](PRIVACY.md).
+extension requests no host permissions — only `storage`. The one exception: if you enable the
+optional cross-device sync (off by default), the corrections and smart rules you wrote yourself —
+never your settings, and never anything read from pages — are carried by Chrome's own sync to
+your Google account, and buttons to stop it and to wipe what was uploaded remain yours. We say
+it this precisely because an overreaching claim is weaker than an exact one, and this is open
+source: verify it yourself. See the [privacy policy](PRIVACY.md).
 
 **Disclosure:** the dictionary was built with the help of
 [Claude Code](https://claude.com/claude-code), following a fixed terminology rulebook set by the

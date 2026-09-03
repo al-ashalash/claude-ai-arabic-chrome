@@ -94,11 +94,14 @@
       document.getElementById('late').appendChild(d);
     }, 800);
     // score the pattern tests once the engine has done its first pass
+    // العزل الاتجاهي (FSI/PDI) يلفّ المخرجات المختلطة — يُجرَّد قبل مقارنة الترجمة
+    // (صحةُ العزل نفسه لها تحققاتها في _dirtest؛ هنا نقيس نصَّ الترجمة وحده)
+    function noBidi(s) { return String(s).replace(new RegExp("[\\u2068\\u2069]", "g"), ""); }
     setTimeout(function(){
       var rows = document.querySelectorAll('#pat .item'); var pass = 0, fails = [];
       rows.forEach(function(r){
         var got = r.hasAttribute('aria-label') ? r.getAttribute('aria-label') : r.textContent.trim();
-        if (got === r.getAttribute('data-expect')) pass++; else fails.push(got + ' ≠ ' + r.getAttribute('data-expect'));
+        if (noBidi(got) === r.getAttribute('data-expect')) pass++; else fails.push(got + ' ≠ ' + r.getAttribute('data-expect'));
       });
       var el = document.getElementById('patResult');
       el.textContent = 'PATTERNS: ' + pass + '/' + rows.length + (fails.length ? ' | FAIL: ' + fails.join(' ; ') : ' — all pass');
@@ -135,7 +138,7 @@
         var rpass = 0, rfails = [];
         rrows.forEach(function (r) {
           var got = r.textContent.trim();
-          if (got === r.getAttribute('data-expect')) rpass++;
+          if (noBidi(got) === r.getAttribute('data-expect')) rpass++;
           else rfails.push(got + ' ≠ ' + r.getAttribute('data-expect'));
         });
         mEl.textContent = 'RULES: ' + rpass + '/' + rrows.length + (rfails.length ? ' | FAIL: ' + rfails.join(' ; ') : ' — all pass');

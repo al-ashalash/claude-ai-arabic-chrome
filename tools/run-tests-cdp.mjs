@@ -30,6 +30,7 @@ const PAGES = [
   { file: "_scanlocktest.html", name: "scanlock" },
   { file: "_swtest.html", name: "swtest" },
   { file: "_rtltest.html", name: "rtltest" },
+  { file: "_synctest.html", name: "synctest" },
 ];
 const filterArg = process.argv.find((a) => a.startsWith("--filter="));
 const FILTER = filterArg ? filterArg.split("=")[1] : null;

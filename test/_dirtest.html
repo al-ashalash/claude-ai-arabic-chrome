@@ -24,6 +24,12 @@ td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
   <pre><code>const x = "code stays LTR";</code></pre>
 </div>
 
+<!-- عناصر الحل الجذري لاختلاط الاتجاهين (خارج .prose كي تُترجم لا تُستثنى) -->
+<div id="bidiFix">
+  <button id="bidiMixed">Cowork</button>
+  <button id="bidiPure">New chat</button>
+</div>
+
 <table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th></tr></thead><tbody></tbody></table>
 
 <script src="../extension/cml-const.js"></script>
@@ -33,8 +39,15 @@ td,th{border:1px solid #ccc;padding:6px 8px;font-size:14px;text-align:right}
 <script>
 // القشرة الموحّدة: نبدأ بالترجمة واتجاه المحادثة مفعّلين
 var MOCK = makeChromeMock({ session: false });
-Object.assign(MOCK.localStore, { cml_enabled: true, cml_chatrtl: true, cml_rtl: true });
+// تصحيح مختلط الحروف يدفع مسار العزل الاتجاهي (Cowork → «العمل المشترك (Cowork)»)
+Object.assign(MOCK.localStore, {
+  cml_enabled: true, cml_chatrtl: true, cml_rtl: true,
+  cml_overrides: { ar: { "Cowork": "العمل المشترك (Cowork)" } },
+});
 window.chrome = MOCK.chrome;
+// عدّاد نبضات إعادة القياس — يُثبَّت قبل المحرك ليصطاد نبضة دفعة الإقلاع
+var resizeNudges = 0;
+window.addEventListener("resize", function () { resizeNudges++; });
 </script>
 <script src="../extension/engine.js"></script>
 <script>
@@ -56,12 +69,23 @@ setTimeout(function () {
   check("الاقتباس عليه dir=auto", "auto", msg.querySelector("blockquote").getAttribute("dir") || "(لا شيء)");
   check("الشيفرة code تُترك بلا dir", "(لا شيء)", msg.querySelector("code").getAttribute("dir") || "(لا شيء)");
 
+  // ===== الحل الجذري لاختلاط الاتجاهين =====
+  var mixed = document.getElementById("bidiMixed").textContent;
+  var pure = document.getElementById("bidiPure").textContent;
+  check("★ الترجمة المختلطة معزولة اتجاهيًّا (FSI…PDI)", "true",
+    String(mixed.charAt(0) === "\u2068" && mixed.charAt(mixed.length - 1) === "\u2069" && mixed.indexOf("(Cowork)") !== -1));
+  check("النقية (عربية فقط) بلا عزل — لا محارف زائدة", "true",
+    String(pure.indexOf("\u2068") === -1 && pure === "محادثة جديدة"));
+  check("★ نبضة إعادة قياس واحدة بعد دفعة الإقلاع", "true", String(resizeNudges === 1));
+  var nudgesBefore = resizeNudges;
+
   // الآن أطفئ اتجاه المحادثة: يجب أن يُرفع الأثر عن كل شيء
   chrome.storage.local.set({ cml_chatrtl: false });
   setTimeout(function () {
     check("بعد الإطفاء: لا dir على الحاوية", "(لا شيء)", msg.getAttribute("dir") || "(لا شيء)");
     check("★ بعد الإطفاء: لا dir على الفقرة العربية", "(لا شيء)", ps[1].getAttribute("dir") || "(لا شيء)");
     check("بعد الإطفاء: لا data-cml-dir باقٍ", "0", String(document.querySelectorAll("[data-cml-dir]").length));
+    check("لا نبضة بلا كتابة نص (تبديل الاتجاه وحده)", "true", String(resizeNudges === nudgesBefore));
 
     // وإيقاف الترجمة كليًّا يجب أن يرفع الأثر أيضًا (حتى لو كان chatrtl مفعّلًا)
     chrome.storage.local.set({ cml_chatrtl: true });
@@ -69,6 +93,7 @@ setTimeout(function () {
       chrome.storage.local.set({ cml_enabled: false });
       setTimeout(function () {
         check("★ بعد إيقاف الترجمة كليًّا: لا data-cml-dir باقٍ", "0", String(document.querySelectorAll("[data-cml-dir]").length));
+        check("★ نبضةُ الاستعادة (الإنجليزية الأقصر تُبطل القياس أيضًا)", "true", String(resizeNudges === nudgesBefore + 1));
         document.title = "dirtest " + pass + "/" + total;
         var h = document.createElement("p");
         h.className = pass === total ? "ok" : "bad";

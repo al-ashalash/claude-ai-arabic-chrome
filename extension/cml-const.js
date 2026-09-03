@@ -27,17 +27,31 @@
       RTL_ENGINE: "cml_rtl_engine",       // "v2" (جذري، الافتراضي) أو "v1" (نقطي للتوافق)
       RTLDOC_REQUEST: "cml_rtldoc_request", // طلب طبيب الاتجاه (عابر — SESS)
       RTLDOC_RESULT: "cml_rtldoc_result",   // نتيجته (دائمة — local، كنتيجة الفحص)
+      // ---- المزامنة الاختيارية (المرحلة ٦) — العقد كاملًا في رأس cml-sync.js ----
+      SYNC_ENABLED: "cml_sync_enabled",   // local: علم الموافقة — غيابه أو false = معطّلة
+      SYNC_TOMBS: "cml_sync_tombs",       // local: شواهد الحذف {"<لغة>|<مفتاح>": وقتُ الحذف}
+      SYNC_LASTHASH: "cml_sync_lasthash", // local: بصمة آخر حالة طابقت السحابة (حارس الصدى)
+      SYNC_DEVICE: "cml_sync_device",     // local: هوية الجهاز — لتجاهل صدى دفعاتنا نحن
+      SYNC_STATE: "cml_sync_state",       // local: حال آخر دفعة {status:"ok"|"overflow"|"error",…}
+      SYNC_PENDING: "cml_sync_pending",   // local: طابع دفعة معلّقة — يضمن الدفع بعد موت العامل
+      SYNC_META: "cml_syncmeta",          // sync: {v,rev,at,device,count,hash,chunks} — يُكتب آخِرًا
+      SYNC_CHUNK_PREFIX: "cml_syncd_",    // sync: بادئة مفاتيح الشرائح cml_syncd_0..N
       // مفاتيح بناءات ما قبل النشر — تُحذف عند الإقلاع ولا تُستعمل
       LEGACY_COLLECT: "cml_collect",
       LEGACY_COLLECTED: "cml_collected",
     },
 
-    // القائمة التي تحذفها «إعادة الضبط» — تُشتق من الأسماء أعلاه فلا تنحرف عنها
+    // القائمة التي تحذفها «إعادة الضبط» — تُشتق من الأسماء أعلاه فلا تنحرف عنها.
+    // مفاتيح المزامنة المحلية فيها (فيُطفأ العلم وتُمحى الدفاتر)، أما مفاتيح السحابة
+    // (cml_syncmeta والشرائح) فليست فيها عمدًا: «إعادة الضبط» محلية بالعقد،
+    // وزرُّ المحو في صفحة الإعدادات هو من يتولى الطرف البعيد
     RESET_KEYS: [
       "cml_enabled", "cml_rtl", "cml_chatrtl", "cml_overrides", "cml_user_patterns",
       "cml_scan_request", "cml_scan_result", "cml_scan_cancel", "cml_scan_claim",
       "cml_recon_dismissed", "cml_bad_rules",
       "cml_rtl_engine", "cml_rtldoc_request", "cml_rtldoc_result",
+      "cml_sync_enabled", "cml_sync_tombs", "cml_sync_lasthash",
+      "cml_sync_device", "cml_sync_state", "cml_sync_pending",
     ],
     UNUSED_KEYS: ["cml_collect", "cml_collected"],
 
@@ -60,6 +74,17 @@
     IMPORT_MAX_BYTES: 5 * 1024 * 1024,
     IMPORT_MAX_TERMS: 20000,
     IMPORT_MAX_RULES: 2000,
+
+    // ---- عتبات المزامنة (حصص chrome.storage.sync الحقيقية: 8192 بايت للعنصر،
+    //      102400 للمجموع، 512 عنصرًا، وسقفُ كتابات بالدقيقة — فالأرقام دونها بهامش) ----
+    SYNC_ITEM_BYTES: 7500,          // سقف (مفتاح + قيمة JSON) للشريحة الواحدة، بايتات UTF-8
+    SYNC_TOTAL_BYTES: 92000,        // سقف مجموع اللقطة (الشرائح + الميتا)
+    SYNC_TOMB_MAX: 200,             // سقف شواهد الحذف — الأقدم يُسقَط أولًا
+    SYNC_TOMB_TTL_MS: 30 * 24 * 3600 * 1000, // عمر الشاهد: شهر ثم يُنسى (الحذف بلغ الجميع)
+    // لقطةٌ طابعُها أبعدَ من هذا في المستقبل = ساعةُ جهازٍ منحرفة: لا تُؤتمن على
+    // الحذف بالغياب (وإلا محت تصحيحات الجهاز السليم في كل دمج)
+    SYNC_SKEW_TOLERANCE_MS: 5 * 60 * 1000,
+    SYNC_PUSH_DEBOUNCE_MS: 2000,    // تجميع التعديلات المتتابعة قبل الدفع (سقف الكتابات)
   };
   g.CMLConst = C;
 })(typeof globalThis !== "undefined" ? globalThis : this);

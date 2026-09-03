@@ -1,11 +1,14 @@
 # سياسة الخصوصية — تعريب كلود (غير رسمي)
 
-**آخر تحديث: 2026-08-01**
+**آخر تحديث: 2026-09-03**
 
 ## بالعربية
 
 لا يجمع هذا الامتداد أي بيانات شخصية، **ولا يخزّن شيئًا مما يظهر على شاشتك ولا يرسله إلى أي
-جهة**. يعمل بالكامل داخل متصفحك.
+جهة**. يعمل بالكامل داخل متصفحك. الاستثناء الوحيد: إن فعّلتَ المزامنة الاختيارية (وهي مطفأة
+افتراضيًّا) رُفعت تصحيحاتُك وقواعدُك — دون إعداداتك ودون أي شيء يُقرأ من الصفحات — عبر
+مزامنة كروم إلى حسابك في جوجل، وتبقى لك أزرار إيقافها ومسح ما رُفع. (التفصيل في قسم
+«المزامنة الاختيارية» أدناه.)
 
 ### كيف يعمل بالضبط — بلا تهويل ولا تهوين
 
@@ -24,14 +27,36 @@
   Claude. (انظر `inChatContent` في `engine.js`.)
 - **لا يحتفظ بشيء:** لا عناوين محادثاتك، ولا أسماء مشاريعك، ولا نصوص رسائلك، ولا أي شيء تراه.
 - **لا اتصال بأي خادم للامتداد:** لا يستخدم أي خدمة خارجية أو طرف ثالث، وكل ملفاته
-  (القاموس والخطوط) مضمّنة محليًّا.
+  (القاموس والخطوط) مضمّنة محليًّا. (والمزامنة الاختيارية أدناه لا تغيّر هذا: الامتداد
+  لا يفتح اتصالًا — المتصفح نفسه هو من ينقلها ضمن مزامنة حسابك.)
 - **الصلاحية الوحيدة `storage`:** لحفظ تفضيلاتك (تشغيل/إيقاف، الاتجاه، والكلمات التي تصحّحها)
-  محليًّا على جهازك. لا تُشارَك مع أي جهة.
+  محليًّا على جهازك. لا تُشارَك مع أي جهة إلا ما اخترته أنت في «المزامنة الاختيارية» أدناه.
 - **«فحص الموقع» يجري بضغطة منك وحدك:** ولا يقرأ إلا ملفات البرمجة العامة للموقع (وهي نفسها
   التي ينزّلها متصفحك لعرض الصفحة) ليستخرج منها نصوص الواجهة ويعرف ما لم يُترجَم بعد.
   **لا يمسّ صفحتك ولا محتواك**، ولا يتصل بغير موقع claude.ai، والنتيجة تبقى على جهازك.
 
 - **عند الإزالة:** يمحو المتصفح تلقائيًّا كل ما حُفظ محليًّا؛ لا يبقى شيء ولا يُرسَل شيء.
+  (ما في مساحة المزامنة — إن كنت فعّلتها — يتبع حسابك لا جهازك؛ انظر القسم التالي.)
+
+### المزامنة الاختيارية بين أجهزتك
+
+الاستثناء الوحيد للقاعدة أعلاه: إن فعّلتَ المزامنة الاختيارية (وهي مطفأة افتراضيًّا) رُفعت
+تصحيحاتُك وقواعدُك — دون إعداداتك ودون أي شيء يُقرأ من الصفحات — عبر مزامنة كروم إلى
+حسابك في جوجل، وتبقى لك أزرار إيقافها ومسح ما رُفع. وتفصيل ذلك:
+
+- **مطفأة افتراضيًّا**، ولا تُفعَّل إلا بموافقة صريحة من صفحة الإعدادات، بعد لوحةٍ تعرض
+  عليك كلَّ ما يلي قبل الكتابة.
+- **ما الذي يُرفع:** تصحيحاتُك التي كتبتها بنفسك وقواعدُك الذكية — لا غير.
+- **إلى أين:** بنية مزامنة كروم (`chrome.storage.sync`) المرتبطة بحسابك في جوجل. الامتداد
+  نفسه لا يفتح أي اتصال شبكي؛ المتصفح هو من ينقل هذه البيانات ضمن مزامنة حسابك.
+  **وجوجل قد تطّلع عليها ما لم تفعّل عبارة مرور المزامنة في كروم نفسه.**
+- **ما لا يُرفع أبدًا:** إعداداتك (تبقى لكل جهاز على حدة)، ونتائج الفحص، وأي شيء يُقرأ
+  من الصفحات.
+- **التعطيل لا يمسح ما رُفع:** إيقاف المزامنة يوقف الرفع من جهازك ولا يمسّ ما في حسابك —
+  ولذلك في صفحة الإعدادات زرٌّ مستقل «امسح ما رُفع من حسابك» يمحو بيانات الامتداد وحدها
+  من مساحة المزامنة.
+- **عند إزالة الامتداد:** ما في مساحة المزامنة قد يبقى في حسابك ويعود عند إعادة التثبيت —
+  فإن أردت محوه يقينًا فاضغط «امسح ما رُفع من حسابك» قبل الإزالة.
 
 ### كيف أُنجزت الترجمة
 
@@ -51,7 +76,11 @@
 ## In English
 
 This extension collects no personal data, **stores nothing of what appears on your screen, and
-sends nothing anywhere**. It runs entirely inside your browser.
+sends nothing anywhere**. It runs entirely inside your browser. The one exception: if you enable
+the optional cross-device sync (off by default), the corrections and smart rules you wrote
+yourself — never your settings, and never anything read from pages — are carried by Chrome's own
+sync to your Google account, and buttons to stop it and to wipe what was uploaded remain yours.
+(Details in the "Optional sync" section below.)
 
 ### Exactly how it works — stated precisely
 
@@ -72,15 +101,41 @@ project is open source, so every line of this is yours to verify.
   yours nor Claude's. (See `inChatContent` in `engine.js`.)
 - **It keeps nothing:** no chat titles, project names, message text, or anything else you see.
 - **No network calls of its own:** no external service or third party; all files (dictionary and
-  fonts) are bundled locally.
+  fonts) are bundled locally. (The optional sync below does not change this: the extension opens
+  no connection — the browser itself carries that data as part of your account's sync.)
 - **The only permission, `storage`,** saves your preferences (on/off, direction, and terms you
-  fix) locally on your device. Nothing is shared.
+  fix) locally on your device. Nothing is shared beyond what you yourself opt into under
+  "Optional sync" below.
 - **"Site scan" runs only when you press the button,** and reads only the site's public JavaScript
   bundles — the same files your browser already downloads to render the page — to extract
   interface strings and find those not translated yet. **It does not touch your page or your
   content**, contacts no origin other than claude.ai, and the result stays on your device.
 
-- **On uninstall,** the browser automatically erases everything stored locally.
+- **On uninstall,** the browser automatically erases everything stored locally. (Data in the
+  sync area — if you ever enabled sync — follows your account, not your device; see the next
+  section.)
+
+### Optional sync between your devices
+
+The one exception to the rule above: if you enable the optional sync (off by default), the
+corrections and smart rules you wrote yourself — never your settings, and never anything read
+from pages — are carried by Chrome's own sync to your Google account, and buttons to stop it
+and to wipe what was uploaded remain yours. In detail:
+
+- **Off by default.** It activates only after an explicit consent panel in the options page
+  that states everything below before anything is written.
+- **What is uploaded:** the corrections you typed yourself and your smart rules — nothing else.
+- **Where to:** Chrome's sync infrastructure (`chrome.storage.sync`), tied to your Google
+  account. The extension itself opens no network connection; the browser carries this data as
+  part of your account's sync. **Google may be able to read it unless you set a sync passphrase
+  in Chrome itself.**
+- **What is never uploaded:** your settings (they stay per device), scan results, and anything
+  read from pages.
+- **Turning sync off does not erase what was uploaded:** it only stops uploads from that
+  device and leaves your account untouched — which is why a separate "wipe what was uploaded"
+  button exists in the options page; it removes this extension's data alone from the sync area.
+- **On uninstall,** data in the sync area may remain in your account and reappear on
+  reinstall — press the wipe button first if you want it gone for certain.
 
 ### How the translation was made
 

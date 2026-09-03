@@ -13,9 +13,16 @@
  *                            مسار الحجز القديم فورًا — وهو المطلوب في أكثر الصفحات.
  *   opts.sendMessage       ⇒ دالة تصير chrome.runtime.sendMessage؛ بغيابها غائبة تمامًا
  *                            (فيسقط askBusy في صفحة الإعدادات إلى الفحص المركّب القديم).
+ *   opts.sync = {itemBytes, totalBytes} ⇒ مساحة chrome.storage.sync كاملة (get/set/remove)
+ *                            بحصص كروم الحقيقية بايتاتِ UTF-8 (المفتاح + قيمة JSON):
+ *                            عنصر يجاوز itemBytes أو مجموع يجاوز totalBytes ⇒ رفض ذرّي
+ *                            كما في المتصفح — لا يُكتب شيء ولا يُسجَّل ولا يُبثّ، والخطأ
+ *                            يصل كما يصل هناك: runtime.lastError يُنصب قبل نداء cb ويُمسح
+ *                            بعده (لا استثناء). أحداث الكتابة تصل onChanged بحرف "sync".
+ *                            بغيابها لا مساحة sync أصلًا (كل الصفحات القائمة).
  *
  * يعيد: { chrome, localStore, sessStore, localWrites, sessWrites, localRemoved,
- *         sessRemoved, fireChanged(changes, area), hooks }
+ *         sessRemoved, syncStore, syncWrites, syncRemoved, fireChanged(changes, area), hooks }
  *   المخازن والسجلات مراجع حيّة: الصفحة تزرع قيمها الأولية بـ Object.assign على
  *   localStore وتفحص الكتابات بعديًّا من المصفوفات نفسها. حيث session معطّلة تكون
  *   sessStore/sessWrites/sessRemoved قيمة null صريحة لا مصفوفات فارغة — كي يَفضح
@@ -107,6 +114,52 @@
       chromeObj.storage.session = sess;
     }
 
+    // مساحة sync اختيارية (صفحة المزامنة): كمساحة local تمامًا زائدَ إنفاذ الحصص —
+    // فالعقد الذي تختبره صفحة المزامنة هو بالضبط «ماذا يفعل chrome عند تجاوز الحصة»،
+    // وقشرة لا ترفض كان سينجح فوقها كودٌ يفيض في المتصفح الحقيقي.
+    var syncStore = null, syncWrites = null, syncRemoved = null;
+    if (opts.sync) {
+      syncStore = {}; syncWrites = []; syncRemoved = [];
+      var itemMax = opts.sync.itemBytes || 8192;
+      var totalMax = opts.sync.totalBytes || 102400;
+      // بايتات UTF-8 لا أحرف: حصص كروم بالبايت، والعربية حرفها بايتان
+      var syncBytes = function (s) {
+        if (typeof TextEncoder === "function") return new TextEncoder().encode(s).length;
+        return unescape(encodeURIComponent(s)).length;
+      };
+      var itemCost = function (k, v) { return syncBytes(k) + syncBytes(JSON.stringify(v)); };
+      var syncArea = makeArea(syncStore, syncWrites, syncRemoved, "sync");
+      var syncOkSet = syncArea.set;
+      syncArea.set = function (obj, cb) {
+        var err = null, k, total = 0;
+        for (k in obj) {
+          if (Object.prototype.hasOwnProperty.call(obj, k) && itemCost(k, obj[k]) > itemMax) {
+            err = "QUOTA_BYTES_PER_ITEM quota exceeded"; break;
+          }
+        }
+        if (!err) {
+          // المجموع المرتقب: القائم بلا المفاتيح المستبدَلة + الوارد كله
+          for (k in syncStore) {
+            if (Object.prototype.hasOwnProperty.call(syncStore, k) &&
+                !Object.prototype.hasOwnProperty.call(obj, k)) total += itemCost(k, syncStore[k]);
+          }
+          for (k in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, k)) total += itemCost(k, obj[k]);
+          }
+          if (total > totalMax) err = "QUOTA_BYTES quota exceeded";
+        }
+        if (err) {
+          // كما يُبلغ chrome الحقيقي: الرد يجري وlastError منصوب أثناءه فقط —
+          // والرفض ذرّي: لا مخزون ولا سجل ولا بثّ onChanged
+          chromeObj.runtime.lastError = { message: err };
+          try { if (cb) cb(); } finally { chromeObj.runtime.lastError = undefined; }
+          return;
+        }
+        syncOkSet(obj, cb);
+      };
+      chromeObj.storage.sync = syncArea;
+    }
+
     if (typeof opts.runtimeConnect === "function") chromeObj.runtime.connect = opts.runtimeConnect;
     if (typeof opts.sendMessage === "function") chromeObj.runtime.sendMessage = opts.sendMessage;
 
@@ -115,6 +168,7 @@
       localStore: localStore, sessStore: sessStore,
       localWrites: localWrites, sessWrites: sessWrites,
       localRemoved: localRemoved, sessRemoved: sessRemoved,
+      syncStore: syncStore, syncWrites: syncWrites, syncRemoved: syncRemoved,
       fireChanged: fireChanged,
       hooks: hooks,
     };

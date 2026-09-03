@@ -1,8 +1,11 @@
 /* options.js — settings page for تعريب كلود للويب (Arabic-only).
-   Wires the UI to chrome.storage.local. No network.
+   Wires the UI to chrome.storage.local. No network of its own — الوجه البعيد الوحيد
+   هو chrome.storage.sync لقسم المزامنة الاختيارية (المتصفح ينقلها ضمن حساب المستخدم،
+   لا اتصال منا): كتابة علم الموافقة، وعرض الحال، ومسح مفاتيحنا من مساحة المزامنة.
    Keys: cml_enabled, cml_rtl, cml_chatrtl, cml_overrides, cml_user_patterns,
          cml_scan_request, cml_scan_result, cml_scan_cancel, cml_scan_claim,
-         cml_rtl_engine, cml_rtldoc_request, cml_rtldoc_result. */
+         cml_rtl_engine, cml_rtldoc_request, cml_rtldoc_result,
+         cml_sync_enabled, cml_sync_state (+ في مساحة sync: cml_syncmeta وcml_syncd_*). */
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
@@ -883,6 +886,106 @@
     });
   }
 
+  // ---------- المزامنة الاختيارية بين الأجهزة (المرحلة ٦) ----------
+  // المنطق كله في cml-sync.js يقوده sw.js — لهذه الصفحة ثلاثة أدوار لا غير:
+  //   ١) الموافقة الصريحة: لوحة شرح صادقة ثم كتابة علم cml_sync_enabled.
+  //   ٢) عرض حال آخر دفعة من cml_sync_state كما هي — بلا تجميل: ok/overflow/error.
+  //   ٣) المسح المستقل: حذف مفاتيحنا (الميتا والشرائح) من chrome.storage.sync رأسًا —
+  //      مستقلٌّ عن الإيقاف عمدًا، لأن التعطيل لا يمسح ما رُفع.
+  var SYNC_TOTAL_KB = Math.round(CMLConst.SYNC_TOTAL_BYTES / 1000);
+
+  function renderSync() {
+    var off = $("syncOff"), on = $("syncOn");
+    if (!off || !on) return; // قشور الاختبار بلا هذا القسم
+    get([CMLConst.K.SYNC_ENABLED, CMLConst.K.SYNC_STATE], function (s) {
+      var enabled = s[CMLConst.K.SYNC_ENABLED] === true;
+      off.classList.toggle("hidden", enabled);
+      on.classList.toggle("hidden", !enabled);
+      if (!enabled) return;
+      var st = s[CMLConst.K.SYNC_STATE];
+      var line = $("syncStateLine"), fill = $("syncBarFill");
+      if (!line) return;
+      function pct(b) { return Math.min(100, Math.round((b || 0) / CMLConst.SYNC_TOTAL_BYTES * 100)); }
+      if (st && st.status === "ok") {
+        var kb = Math.round((st.bytes || 0) / 100) / 10; // بمنزلة عشرية: اللقطات الصغيرة لا تظهر صفرًا
+        line.innerHTML = "آخر رفع " + new Date(st.at || 0).toLocaleString("ar") + " — <b>" +
+          (st.count || 0).toLocaleString("ar") + "</b> من تصحيحاتك وقواعدك، <b>" +
+          kb.toLocaleString("ar") + "</b> كيلوبايت من " + SYNC_TOTAL_KB.toLocaleString("ar") + " كيلوبايت.";
+        if (fill) { fill.style.width = pct(st.bytes) + "%"; fill.style.background = "var(--brand)"; }
+      } else if (st && st.status === "overflow") {
+        // صادقة لا مهوِّنة: لم يُرفع شيء من هذه الدفعة، والمحلي كامل لم يُمسّ
+        var needKb = Math.ceil((st.need || 0) / 1000);
+        line.innerHTML = "⚠ <b>لم يُرفع شيء:</b> تصحيحاتُك أكبر من مساحة المزامنة (تحتاج نحو " +
+          needKb.toLocaleString("ar") + " كيلوبايت والسقف " + SYNC_TOTAL_KB.toLocaleString("ar") +
+          "). كلُّها محفوظة محليًّا كما هي — احذف بعض التصحيحات، أو انقلها بين أجهزتك ملفًّا من «تصدير تصحيحاتك فقط».";
+        if (fill) { fill.style.width = "100%"; fill.style.background = "var(--danger)"; }
+      } else if (st && st.status === "error") {
+        line.textContent = "تعذّر الرفع الأخير (" + (st.error || "خطأ غير معروف") +
+          ") — ستُعاد المحاولة تلقائيًّا عند أول تعديل أو إيقاظ للإضافة.";
+        if (fill) fill.style.width = "0";
+      } else {
+        line.textContent = "فُعّلت المزامنة ✓ — أول رفع يجري خلال ثوانٍ وستظهر حاله هنا.";
+        if (fill) fill.style.width = "0";
+      }
+    });
+  }
+
+  function syncConfirm() {
+    get([CMLConst.K.OVERRIDES], function (s) {
+      var patch = {};
+      patch[CMLConst.K.SYNC_ENABLED] = true;
+      // وخزة أول رفع: إعادة كتابة التصحيحات بقيمتها الحالية حدثُ تخزينٍ يلتقطه العامل
+      // فيمرّ بمسار handleLocalChange الطبيعي (وحدثُ علم الموافقة نفسه ملتقَط في sw.js
+      // احتياطًا) — فأيّهما وصل جرى أول رفعٍ فورًا لا عند أول تعديل لاحق
+      patch[CMLConst.K.OVERRIDES] = s[CMLConst.K.OVERRIDES] || {};
+      set(patch, function (err) {
+        if (err) { flash($("syncStatus"), "تعذّر الحفظ — لم تُفعَّل المزامنة."); return; }
+        var c = $("syncConsent"); if (c) c.classList.add("hidden");
+        renderSync();
+        flash($("syncStatus"), "فُعّلت المزامنة ✓");
+      });
+    });
+  }
+
+  function syncDisable() {
+    var patch = {};
+    patch[CMLConst.K.SYNC_ENABLED] = false;
+    set(patch, function (err) {
+      if (err) { flash($("syncStatus"), "تعذّر الحفظ."); return; }
+      renderSync();
+      // الصدق التزام العقد: الإيقاف محليّ ولا يمسّ الطرف البعيد — ونقولها للمستخدم
+      flash($("syncStatus"), "أُوقفت المزامنة على هذا الجهاز — وما رُفع سابقًا باقٍ في حسابك، ومسحُه بزرّ المسح بعد إعادة التفعيل.");
+    });
+  }
+
+  function syncWipe() {
+    if (!confirm("سيُمحى كل ما رفعته هذه الإضافة إلى مساحة مزامنة حسابك.\n\n" +
+      "نسخُ أجهزتك المحلية لا تُمسّ. وما دامت المزامنة مفعّلةً على جهازٍ ما فسيُرفع من جديد عند أول تعديل فيه.\n\nأتتابع؟")) return;
+    try {
+      chrome.storage.sync.get(null, function (all) {
+        if (chrome.runtime && chrome.runtime.lastError) {
+          flash($("syncStatus"), "تعذّر الوصول إلى مساحة المزامنة: " + chrome.runtime.lastError.message);
+          return;
+        }
+        // مفاتيحنا وحدها (الميتا والشرائح) — لا نمسّ أي مفتاح آخر في مساحة المزامنة
+        var keys = [];
+        for (var k in (all || {})) {
+          if (!Object.prototype.hasOwnProperty.call(all, k)) continue;
+          if (k === CMLConst.K.SYNC_META || k.indexOf(CMLConst.K.SYNC_CHUNK_PREFIX) === 0) keys.push(k);
+        }
+        if (!keys.length) { flash($("syncStatus"), "مساحة المزامنة خالية أصلًا — لا شيء يُمحى."); return; }
+        chrome.storage.sync.remove(keys, function () {
+          var e = chrome.runtime && chrome.runtime.lastError;
+          if (e) { flash($("syncStatus"), "تعذّر المسح: " + e.message); return; }
+          flash($("syncStatus"), "مُحي ما رُفع من حسابك ✓ — نسخ أجهزتك المحلية باقية كما هي.");
+        });
+      });
+    } catch (e) {
+      // بيئة بلا chrome.storage.sync (قشور الاختبار مثلًا) — إخفاق صريح لا صامت
+      flash($("syncStatus"), "تعذّر المسح — مساحة المزامنة غير متاحة هنا.");
+    }
+  }
+
   // ---------- فخّ أذون المضيف منذ فايرفوكس 127 ----------
   // فايرفوكس MV3 لا يمنح أذونَ مواقع سكربتات المحتوى عند التثبيت، فتُثبَّت الإضافة
   // وتصمت على claude.ai صمتًا تامًّا — والمستخدم يظنها معطوبة. فنكشف الحال هنا
@@ -947,6 +1050,7 @@
     get([CMLConst.K.RTLDOC_RESULT], function (s) { renderRtlDoc(s[CMLConst.K.RTLDOC_RESULT]); });
     loadRtlEngine();
     renderRecon();   // مراجعة ما بعد التحديث: تظهر وحدها متى كان ثمة ما يُراجَع
+    renderSync();    // قسم المزامنة الاختيارية: حالته من cml_sync_enabled/cml_sync_state
   }
 
   function wire() {
@@ -991,6 +1095,17 @@
     if ($("startRtlDoc")) $("startRtlDoc").addEventListener("click", startRtlDoc);
     if ($("rtlDocExport")) $("rtlDocExport").addEventListener("click", exportRtlDoc);
 
+    // قسم المزامنة الاختيارية — الحُرّاس كسائر الأقسام: قشور الاختبار بلا هذا القسم
+    if ($("syncEnableBtn")) $("syncEnableBtn").addEventListener("click", function () {
+      var c = $("syncConsent"); if (c) c.classList.remove("hidden");
+    });
+    if ($("syncCancel")) $("syncCancel").addEventListener("click", function () {
+      var c = $("syncConsent"); if (c) c.classList.add("hidden");
+    });
+    if ($("syncConfirm")) $("syncConfirm").addEventListener("click", syncConfirm);
+    if ($("syncDisableBtn")) $("syncDisableBtn").addEventListener("click", syncDisable);
+    if ($("syncWipeBtn")) $("syncWipeBtn").addEventListener("click", syncWipe);
+
     $("scanExport").addEventListener("click", exportScan);
     $("scanImportBtn").addEventListener("click", function () { $("importTransFile").click(); });
     $("importTransFile").addEventListener("change", function (e) {
@@ -1026,6 +1141,8 @@
         if (ch[CMLConst.K.RTLDOC_RESULT]) renderRtlDoc(ch[CMLConst.K.RTLDOC_RESULT].newValue);
         // بدّلته نافذة منبثقة أو «إعادة الضبط» ⇒ ينعكس اختيار المحرّك هنا فورًا
         if (ch[CMLConst.K.RTL_ENGINE]) loadRtlEngine();
+        // المزامنة: علمُ التفعيل أو حالُ الدفعة كتبهما العامل (أو «إعادة الضبط») ⇒ عرض حيّ
+        if (ch[CMLConst.K.SYNC_ENABLED] || ch[CMLConst.K.SYNC_STATE]) renderSync();
       });
     } catch (e) {}
 

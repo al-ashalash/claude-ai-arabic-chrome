@@ -277,6 +277,32 @@
     if (inChatContent(p)) return false;
     return true;
   }
+  // ---------- الحل الجذري لاختلاط الاتجاهين (لقطة «العمل المشترك (Cowork)») ----------
+  // ١) عزل اتجاهي: ترجمةٌ تخلط حروفًا عربية ولاتينية داخل حاويةٍ أيًّا كان اتجاهُها
+  //    كانت تتبعثر بصريًّا بجوار الأرقام والأقواس. FSI/PDI (U+2068/U+2069) هما حلُّ
+  //    المنصة القياسي: القطعة تُرتَّب داخليًّا بأول حرفٍ قويٍّ فيها وتُعامَل خارجيًّا
+  //    وحدةً واحدة — لا رقعة CSS لكل موضع. النقية (عربية فقط) تُترك بلا لفّ.
+  //    lastWritten يخزّن الملفوف فتبقى مقارنات «كما تركناها» صادقة، والاستعادة بالأصل.
+  var FSI = "\u2068", PDI = "\u2069";
+  var HAS_RTL_CH = new RegExp("[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]");
+  var HAS_LTR_CH = /[A-Za-z]/;
+  function bidiWrap(s) {
+    return HAS_RTL_CH.test(s) && HAS_LTR_CH.test(s) ? FSI + s + PDI : s;
+  }
+  // ٢) نبضة إعادة قياس: مكوناتُ الموقع تقيس عروضَ نصوصها عند الإقلاع (مؤشرُ شرائح
+  //    «محادثة/العمل المشترك» المنزلق) ثم نبدّل النص بالعربية الأطول فيبقى القياسُ
+  //    القديم قصًّا وانزياحًا — وهذه أرضُ «المحسوب» التي لا تلمسها CSS بمبدئنا.
+  //    أخفُّ علاجٍ جذريٍّ عام: نبضةُ resize واحدة مدمجةٌ بعد كل دفعة تعريب، فتعيد
+  //    المكوناتُ قياسَها بمساراتها هي. لا حلقةَ هنا: الدفعة التالية بلا كتابةٍ فلا نبضة.
+  var relayoutTimer = null;
+  function scheduleRelayoutNudge() {
+    if (relayoutTimer) return;
+    relayoutTimer = setTimeout(function () {
+      relayoutTimer = null;
+      try { window.dispatchEvent(new Event("resize")); } catch (e) {}
+    }, 250);
+  }
+
   function translateText(node) {
     if (!active || !translable(node)) return;
     var prev = appliedText.get(node);
@@ -284,8 +310,8 @@
       if (node.nodeValue === prev.lastWritten) {
         // العقدة كما تركناها: أعد اشتقاق الترجمة من الأصل (يلتقط تصحيحًا جديدًا أو حذفه)
         var nv = lookup(prev.key);
-        var want = nv === null ? prev.raw : prev.raw.replace(prev.key, function () { return nv; });
-        if (node.nodeValue !== want) { node.nodeValue = want; prev.lastWritten = want; }
+        var want = nv === null ? prev.raw : prev.raw.replace(prev.key, function () { return bidiWrap(nv); });
+        if (node.nodeValue !== want) { node.nodeValue = want; prev.lastWritten = want; scheduleRelayoutNudge(); }
         if (nv === null) appliedText.delete(node); // عاد للأصل — عقدة عادية من جديد
         return;
       }
@@ -298,9 +324,10 @@
     if (!key || key.length > CONST.TEXT_MAX) return; // الأوصاف الطويلة مسموحة (نص المحادثة مستثنى أصلاً)
     var v = lookup(key);
     if (v !== null && v !== key) {
-      var out = raw.replace(key, function () { return v; });
+      var out = raw.replace(key, function () { return bidiWrap(v); });
       appliedText.set(node, { raw: raw, key: key, lastWritten: out });
       node.nodeValue = out;
+      scheduleRelayoutNudge();
       return;
     }
     // لا يُسجَّل شيء هنا: النصّ قُرئ للمطابقة فحسب، ولم يُطابق، فيُترك ويُنسى. لا يُخزَّن
@@ -318,8 +345,8 @@
       if (prev) {
         if (val === prev.lastWritten) {
           var nv = lookup(prev.key);
-          var want = nv === null ? prev.raw : prev.raw.replace(prev.key, function () { return nv; });
-          if (val !== want) { el.setAttribute(a, want); prev.lastWritten = want; }
+          var want = nv === null ? prev.raw : prev.raw.replace(prev.key, function () { return bidiWrap(nv); });
+          if (val !== want) { el.setAttribute(a, want); prev.lastWritten = want; scheduleRelayoutNudge(); }
           if (nv === null) delete rec[a];
           continue;
         }
@@ -329,10 +356,11 @@
       if (!key || key.length > CONST.TEXT_MAX) continue; // السقف نفسه المطبَّق على عقد النص
       var t = lookup(key);
       if (t !== null && t !== key) {
-        var out = val.replace(key, function () { return t; });
+        var out = val.replace(key, function () { return bidiWrap(t); });
         if (!rec) { rec = {}; appliedAttr.set(el, rec); }
         rec[a] = { raw: val, key: key, lastWritten: out };
         el.setAttribute(a, out);
+        scheduleRelayoutNudge();
       }
     }
   }
@@ -359,6 +387,7 @@
         appliedAttr.delete(els[j]);
       }
     }
+    scheduleRelayoutNudge(); // الاستعادةُ تغييرُ أطوالٍ كذلك — القياسات القديمة بطلت
   }
 
   function walk(root) {

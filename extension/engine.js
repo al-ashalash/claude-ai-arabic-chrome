@@ -459,8 +459,12 @@
       for (var i = 0; i < added.length; i++) {
         var nd = added[i];
         if (!nd.isConnected) continue; // عقدة أُزيلت قبل أن نصل إليها
-        if (nd.nodeType === 1) { walk(nd); applyChatDir(nd); }
-        else translateText(nd);
+        if (nd.nodeType === 1) {
+          walk(nd); applyChatDir(nd);
+          // المواضع المحسوبة تظهر مع فروعها المستجدّة (قائمة تُفتح، لوحة تُركَّب)،
+          // والمرور الكامل وحده كان يفوّتها حتى المرور التالي — فتظهر مقلوبةً لحظتَها
+          markComputedSurfaces(nd);
+        } else translateText(nd);
       }
       texts.forEach(function (n) { if (n.isConnected) translateText(n); });
       attrs.forEach(function (n) { if (n.isConnected) translateAttrs(n); });
@@ -1074,7 +1078,12 @@
     var scope = (root && root.querySelectorAll) ? root : document;
     var list;
     try { list = scope.querySelectorAll(COMPUTED_SEL); } catch (e) { return; }
-    var lim = Math.min(list.length, 300);
+    // الجذرُ نفسه قد يكون الموضعَ المحسوب (يُدرَج المؤشر عقدةً مفردة) — والاستعلام
+    // لا يرى إلا الأحفاد، فكان يُفلت
+    var self = [];
+    try { if (scope.nodeType === 1 && scope.matches && scope.matches(COMPUTED_SEL)) self = [scope]; } catch (e) {}
+    list = self.concat(Array.prototype.slice.call(list, 0, 300));
+    var lim = list.length;
     for (var i = 0; i < lim; i++) {
       var el = list[i];
       if (el.hasAttribute("data-cml-noflip")) continue;
@@ -1114,6 +1123,10 @@
         attributes: true, attributeFilter: ATTRS,
       });
     } catch (e) {}
+    // مسحتان متأخرتان للمواضع المحسوبة: مكوّناتٌ تقيس نفسها بعد الترطيب فتكتب
+    // نمطَها السطري متأخرًا بلا إدراج عقدةٍ جديدة — فلا حدثَ يوقظنا لها
+    setTimeout(function () { markComputedSurfaces(document); }, 1200);
+    setTimeout(function () { markComputedSurfaces(document); }, 4000);
   }
 
   // ---------- settings (chrome.storage) ----------

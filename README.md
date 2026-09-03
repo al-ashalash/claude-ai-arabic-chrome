@@ -18,8 +18,8 @@
 
 | | |
 |---|---|
-| **ترجمة الواجهة** | قاموس فيه أكثر من **18,000** مفردة، يغطي **95.9%** من نصوص الموقع |
-| **قواعد ذكية** | أكثر من **1,100** قاعدة للنصوص المتغيّرة (التواريخ، «قبل ٣ أيام»، «الرسالة ١ من ٢»…) |
+| **ترجمة الواجهة** | قاموس فيه أكثر من **23,800** مفردة، يغطي **96%** من نصوص الموقع (والباقي أسماءُ علاماتٍ ومعرِّفاتٌ تقنية لا تُترجَم) |
+| **قواعد ذكية** | أكثر من **2,500** قاعدة للنصوص المتغيّرة (التواريخ، «قبل ٣ أيام»، «الرسالة ١ من ٢»…) |
 | **صيغ الجمع العربية** | الفئات الست (`zero/one/two/few/many/other`) — لا «٣ محادثة» ولا «١١ محادثات» |
 | **الاتجاه من اليمين لليسار** | قلبُ التخطيط، واتجاهٌ مستقلٌّ لكل فقرة في المحادثة، والشيفرة تبقى من اليسار |
 | **تصحيح شخصي** | ابحث في القاموس كله وعدّل أي ترجمة لنفسك |
@@ -90,7 +90,7 @@ node tools/build-firefox.mjs
 
 - ما يبقى إنجليزيًّا (العلامات التجارية والمصطلحات التقنية) وما يُترجَم.
 - نمط «الترجمة (English)» للعناوين المستقلة، والعربيةُ وحدها داخل الجُمل.
-- توحيد المصطلح الواحد عبر ثمانية عشر ألف نصّ.
+- توحيد المصطلح الواحد عبر أربعةٍ وعشرين ألف نصّ.
 
 ومرّ كل نصّ بتدقيق آلي (تغطية، وسلامة المتغيّرات، واتساق المصطلح) ثم مراجعة.
 
@@ -185,7 +185,7 @@ RTL support is also incomplete — Arabic text is left-aligned, and its order br
 with English, numbers, or code. This extension addresses both: it translates the interface and
 flips its direction.
 
-**What it does:** an 18,000-entry dictionary covering 95.9% of the site's strings; 1,100+ smart
+**What it does:** a 23,800-entry dictionary covering 96% of the site's strings; 2,500+ smart
 rules for variable text (dates, relative times, counters); all six Arabic plural categories;
 full RTL layout with per-paragraph direction in conversations; personal corrections searchable
 across the whole dictionary; and a site scan that reads claude.ai's public bundles to find newly

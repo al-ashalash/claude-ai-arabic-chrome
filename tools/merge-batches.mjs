@@ -5,6 +5,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { DICTS, GLOSSARY } from "./paths.mjs";
 
+// نصٌّ فيه متغيّر لا يصلح مفتاحًا حرفيًّا: الصفحة تعرض قيمةً لا «{name}»، فلا يطابق
+// شيئًا أبدًا ويتضخّم به القاموس. مكانُه القواعد (gen-patterns بحرّاس makePattern).
+const VAR_KEY_RE = new RegExp("\\{[A-Za-z_$][\\w$]*\\}");
+
 const batchDir = path.join(GLOSSARY, "_ar_batches");
 const files = fs.readdirSync(batchDir).filter((f) => f.endsWith(".json")).sort();
 
@@ -21,6 +25,9 @@ for (const f of files) {
   catch (e) { bad++; console.warn("! unparseable:", f); continue; }
   for (const p of arr) {
     if (!p || typeof p.en !== "string") continue;
+    // ★ نصُّ فيه متغيّر لا يصلح مفتاحًا حرفيًّا: الصفحة تعرض قيمةً لا «{name}»،
+    // فمكانُه القواعد (gen-patterns بحرّاس makePattern) لا strings
+    if (VAR_KEY_RE.test(p.en)) { skipped++; continue; }
     seen++;
     const en = p.en.trim(), ar = (p.ar || "").trim();
     if (!en || !ar || ar === en) { skipped++; continue; }         // skip empty / brand-kept

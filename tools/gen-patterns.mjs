@@ -10,7 +10,10 @@ import { ROOT, GLOSSARY, DICTS } from "./paths.mjs";
 const G = GLOSSARY;
 const AR = path.join(DICTS, 'ar.json');
 const BASE_PATTERNS = process.argv[2];
-const INPUTS = [
+// المدخلات تُمرَّر بالسطر (‎--in=مسار‎) وإلا فقائمةُ الدفعات التاريخية — فالتوليد
+// يتكرر مع كل حصادٍ جديد، وتثبيتُ المسارات في الشيفرة كان يُلزم تعديلَها كل مرة
+const inArgs = process.argv.filter((x) => x.startsWith("--in=")).map((x) => x.slice(5));
+const INPUTS = inArgs.length ? inArgs : [
   `${G}/_vars-pairs-desktop.json`,
   `${G}/_vars-pairs-web-20260814b.json`,
   `${G}/_vars-pairs-20260815.json`,

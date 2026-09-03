@@ -1061,6 +1061,38 @@
     });
   }
 
+  // ---------- جزيرة المواضع المحسوبة (بعد دحضٍ على الموقع الحيّ) ----------
+  // مؤشرُ الشرائح المنزلق في claude.ai عنصرٌ `absolute left-0 origin-left` يحرّكه
+  // الموقع بـtransform يحسبه من **اليسار**. وقلبُنا مرساتَه (left → inset-inline-start
+  // = يمين في RTL) يجعل حسابَه يقذفه إلى القرص الخطأ — وهو بعينه ما رآه المالك.
+  // العلاج بمبدئنا نفسه: ما يُموضِعه الموقعُ بحسابه لا نمسّ مرساته. والتوقيع موزَّع
+  // على أصناف عدة فلا يُلتقط من CSS، فيوسَم وقت التشغيل: مطلقٌ + ينتقل/يتغيّر
+  // تحويلُه. مرشَّحون قلائل بمحدِّدٍ رخيص، وبسقفٍ يمنع أي كلفة على صفحاتٍ ضخمة.
+  var COMPUTED_SEL = '[class*="origin-"],[class*="translate-x"],[style*="translate"]';
+  function markComputedSurfaces(root) {
+    if (!state.enabled || !state.rtl || state.rtlEngine === "v1") return;
+    var scope = (root && root.querySelectorAll) ? root : document;
+    var list;
+    try { list = scope.querySelectorAll(COMPUTED_SEL); } catch (e) { return; }
+    var lim = Math.min(list.length, 300);
+    for (var i = 0; i < lim; i++) {
+      var el = list[i];
+      if (el.hasAttribute("data-cml-noflip")) continue;
+      var cs;
+      try { cs = getComputedStyle(el); } catch (e) { continue; }
+      if (cs.position !== "absolute" && cs.position !== "fixed") continue;
+      var tp = cs.transitionProperty || "";
+      var wc = cs.willChange || "";
+      if (tp.indexOf("transform") === -1 && tp.indexOf("all") === -1 && wc.indexOf("transform") === -1) continue;
+      el.setAttribute("data-cml-noflip", "computed");
+    }
+  }
+  // إيقافُ الترجمة أو المحرّك يرفع الوسم كما يرفع سائر أثرنا
+  function unmarkComputedSurfaces() {
+    var m = document.querySelectorAll('[data-cml-noflip="computed"]');
+    for (var i = 0; i < m.length; i++) m[i].removeAttribute("data-cml-noflip");
+  }
+
   function fullPass() {
     applyChrome();
     if (state.enabled && active) walk(document.body || document.documentElement);
@@ -1068,6 +1100,8 @@
     // الإيقاف يجب أن يرفع أثر الإضافة كاملًا: كان dir="auto" وdata-cml-dir يبقيان على
     // رسائل المحادثة بعد الإيقاف بلا سبيل لإزالتهما إلا بإعادة تحميل الصفحة.
     applyChatDir(document.body || document.documentElement);
+    if (state.enabled && state.rtl && state.rtlEngine !== "v1") markComputedSurfaces(document);
+    else unmarkComputedSurfaces();
   }
 
   function start() {

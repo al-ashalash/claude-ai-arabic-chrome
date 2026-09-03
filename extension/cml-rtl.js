@@ -544,8 +544,13 @@
       if (swb !== null) return { kind: "flip", flips: [{ prop: prop, value: swb }], neutral: [] };
       return null;
     }
-    if (prop === "background-position" || prop === "object-position" ||
-        prop === "transform-origin" || prop === "perspective-origin") {
+    // ★ transform-origin وperspective-origin **لا تُقلبان** (قرارٌ بعد دحضٍ حيّ): هما
+    // منشأُ التحويلات — أي أرضُ «المحسوب بجافاسكربت» التي تعهّدنا ألّا نمسّها؛ ولا
+    // أثر لهما في موضع التخطيط أصلًا، فمرآتُهما لا تكسب المستخدم شيئًا. وقد كسر
+    // قلبُهما مكوّنًا حقيقيًّا: مؤشر «محادثة/العمل المشترك» منشؤه origin-left فقُلب
+    // إلى 100% مع مرساته، والموقعُ يحسب إزاحته من اليسار — فوقع على القرص الخطأ.
+    if (prop === "transform-origin" || prop === "perspective-origin") return null;
+    if (prop === "background-position" || prop === "object-position") {
       var sw = swapWords(v);
       if (sw !== null) return { kind: "flip", flips: [{ prop: prop, value: sw }], neutral: [] };
       // المُصغِّر يحوّل الكلمات إلى أرقام (left → 0، right → 100%) فالاتجاه يُعبَّر
@@ -875,6 +880,12 @@
     GATE + " pre," + GATE + " code," + GATE + " kbd," + GATE + " samp," +
     GATE + " [data-cml-noflip]{direction:ltr;}\n" +
     GATE + " pre," + GATE + " code{text-align:start;unicode-bidi:isolate;}\n";
+  // ملحوظة على الجزيرة أعلاه: [data-cml-noflip] تخدم أيضًا **المواضع المحسوبة** —
+  // عنصرٌ مطلقٌ يحرّكه الموقع بـtransform (مؤشر شرائح منزلق مثلًا) مرساتُه الفيزيائية
+  // جزءٌ من عقد حسابه، وdirection:ltr عليه يُرجع inset-inline-start إلى معنى left
+  // فتصحّ إزاحتُه بلا أن نمسّ نمطَه السطري. والمحرّك يضع السمة وقت التشغيل لأن
+  // توقيع الحالة موزَّعٌ على أصنافٍ عدة (absolute + origin-* + انتقال transform)
+  // فلا يُلتقط من قاعدة CSS واحدة.
 
   g.CMLRtl = {
     GATE: GATE,

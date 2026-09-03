@@ -1,0 +1,165 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>thumb test</title>
+<!--
+  اختبار «المؤشر المنزلق» — أُضيف بعد بلاغ المالك (لقطتان: المؤشر الأبيض على القرص
+  الخطأ في العربية). البنية هنا **منسوخة من DOM موقع claude.ai الحيّ** (فُحص
+  2026-09-04): مسارٌ relative inline-flex، فيه قاصٌّ absolute inset-0، وفيه مؤشرٌ
+  `invisible absolute left-0 origin-left` يحرّكه سكربت الموقع بـtransform يحسبه من
+  offsetLeft للقرص المختار، ثم قرصان.
+
+  الجذر الذي أثبته الفحص: نحن من كسره — قلبُنا يحوّل `left:0` إلى
+  `inset-inline-start:0` (= يمين في RTL) و`origin-left` إلى `100%`، بينما حساب
+  الموقع من اليسار. فالمؤشر يقع على القرص الخطأ.
+
+  العلاج المُختبَر هنا (طرفان):
+   ١) لا نقلب transform-origin/perspective-origin إطلاقًا (أرضُ المحسوب).
+   ٢) المحرّك يسم المواضع المحسوبة data-cml-noflip، وجزيرةُ LTR تُعيد
+      inset-inline-start إلى معنى left فتصحّ الإزاحة — بلا أن نمسّ النمط السطري.
+
+  العقد: document.title = "thumbtest N/N".
+-->
+<style>
+  body { font-family: system-ui; padding: 16px; max-width: 900px; margin: auto; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  td, th { border: 1px solid #ccc; padding: 6px 8px; font-size: 14px; text-align: right; }
+  .ok { color: #127a2b; font-weight: 700 } .bad { color: #b00; font-weight: 700 }
+
+  /* --- أدواتٌ مصغّرة بأسماء الموقع نفسها: عليها تنطبق قواعدُنا المولَّدة --- */
+  .relative { position: relative }
+  .absolute { position: absolute }
+  .inset-0  { inset: 0 }
+  .left-0   { left: 0 }
+  .origin-left { transform-origin: left }
+  .overflow-clip { overflow: clip }
+  .inline-flex { display: inline-flex }
+  .items-stretch { align-items: stretch }
+  .track { height: 34px; background: #eee; border-radius: 8px; padding: 1px; width: fit-content }
+  .pill { z-index: 1; display: inline-flex; align-items: center; justify-content: center;
+          padding: 0 12px; border: 0; background: transparent; font: inherit; cursor: pointer }
+  /* الانتقال جزءٌ من توقيع «الموضع المحسوب» الذي يكشفه المحرّك، فيبقى مُعلَنًا —
+     ومدّتُه صفرٌ هنا كي تُقاس الهندسة بعد استقرارها لا أثناء انزلاقها */
+  .thumb { background: #fff; box-shadow: 0 1px 2px #0002; border-radius: 7px; top: 1px; bottom: 1px;
+           transition: transform .2s, width .2s; transition-duration: 0s; will-change: transform }
+</style>
+
+<h1>اختبار المؤشر المنزلق (بنية claude.ai الحقيقية)</h1>
+<table id="tbl"><thead><tr><th>الحالة</th><th>المتوقَّع</th><th>الناتج</th><th></th></tr></thead><tbody></tbody></table>
+
+<!-- الناتج المولَّد الحقيقي: منه تأتي قواعد قلب .left-0 و.origin-left وأخواتها -->
+<link rel="stylesheet" href="../extension/rtl-overrides.css">
+<link rel="stylesheet" href="../extension/base.css">
+
+<div id="host">
+  <div class="track relative inline-flex items-stretch" id="track">
+    <div class="absolute inset-0 overflow-clip" id="clip">
+      <div class="thumb absolute left-0 origin-left" id="thumb"></div>
+    </div>
+    <button class="pill" id="p0">محادثة</button>
+    <button class="pill" id="p1">العمل المشترك (Cowork)</button>
+  </div>
+</div>
+
+<script src="../extension/cml-const.js"></script>
+<script src="../extension/cml-rtl.js"></script>
+<script>
+var tb = document.querySelector("#tbl tbody"), pass = 0, total = 0;
+function check(name, expect, got) {
+  total++; var ok = String(expect) === String(got); if (ok) pass++;
+  var tr = document.createElement("tr");
+  [name, expect, got].forEach(function (v) { var td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+  var s = document.createElement("td"); s.className = ok ? "ok" : "bad"; s.textContent = ok ? "✓" : "✗"; tr.appendChild(s);
+  tb.appendChild(tr);
+}
+
+var track = document.getElementById("track");
+var thumb = document.getElementById("thumb");
+var pills = [document.getElementById("p0"), document.getElementById("p1")];
+
+// ★ سكربت «الموقع» كما هو حقًّا: يقيس القرص المختار ويكتب نمطًا سطريًّا. لا نمسّه.
+function selectPill(i) {
+  var p = pills[i];
+  thumb.style.width = p.offsetWidth + "px";
+  thumb.style.transform = "translateX(" + p.offsetLeft + "px)";
+}
+// هل المؤشر منطبقٌ على القرص المختار؟ (تسامحٌ ٢ بكسل لحواف التقريب)
+function coversPill(i) {
+  var a = thumb.getBoundingClientRect(), b = pills[i].getBoundingClientRect();
+  return Math.abs(a.left - b.left) <= 2 && Math.abs(a.right - b.right) <= 2;
+}
+
+// ================= ١) الحالة الأصلية: LTR بلا بوابتنا =================
+selectPill(0);
+check("قبل التعريب (LTR): المؤشر على القرص الأول", "true", String(coversPill(0)));
+selectPill(1);
+check("قبل التعريب (LTR): وعلى الثاني عند اختياره", "true", String(coversPill(1)));
+
+// ================= ٢) RTL ببوابة المحرّك v2 =================
+document.documentElement.setAttribute("dir", "rtl");
+document.documentElement.setAttribute("data-cml-rtl", "v2");
+void document.documentElement.offsetHeight;
+
+// ترتيب الأقراص انعكس فعلًا (المحادثة صارت يمينًا) — هذا مرادُنا ويجب أن يبقى
+check("★ الأقراص انعكست: «محادثة» صارت يمينًا",
+  "true", String(pills[0].getBoundingClientRect().left > pills[1].getBoundingClientRect().left));
+
+// المحرّك يسم المواضع المحسوبة — نحاكي ما يفعله fullPass بالمعيار نفسه
+function markLikeEngine() {
+  var list = document.querySelectorAll('[class*="origin-"],[class*="translate-x"],[style*="translate"]');
+  var n = 0;
+  for (var i = 0; i < list.length; i++) {
+    var el = list[i], cs = getComputedStyle(el);
+    if (cs.position !== "absolute" && cs.position !== "fixed") continue;
+    var tp = cs.transitionProperty || "", wc = cs.willChange || "";
+    if (tp.indexOf("transform") === -1 && tp.indexOf("all") === -1 && wc.indexOf("transform") === -1) continue;
+    el.setAttribute("data-cml-noflip", "computed"); n++;
+  }
+  return n;
+}
+var marked = markLikeEngine();
+check("★ وُسِم المؤشر موضعًا محسوبًا (جزيرة)", "1", String(marked));
+check("والوسم على المؤشر نفسه لا على المسار", "computed/null",
+  thumb.getAttribute("data-cml-noflip") + "/" + track.getAttribute("data-cml-noflip"));
+
+// مرساة المؤشر عادت يسارًا داخل الجزيرة، ومنشؤه لم يُقلب
+var tcs = getComputedStyle(thumb);
+check("★ المرساة عادت إلى اليسار داخل الجزيرة", "0px", tcs.left);
+check("★ منشأ التحويل لم يُقلب (أرض المحسوب)", "true",
+  String(tcs.transformOrigin.indexOf("0px") === 0 || tcs.transformOrigin.indexOf("left") === 0));
+
+// ★★ الحكم: يعيد الموقعُ حسابَه (كما تفعل نبضةُ إعادة القياس) فيقع المؤشر صحيحًا
+selectPill(0);
+check("★★ RTL: المؤشر على «محادثة» المختارة", "true", String(coversPill(0)));
+check("★★ RTL: ولا يقع على القرص الآخر", "false", String(coversPill(1)));
+selectPill(1);
+check("★★ RTL: وينتقل إلى «العمل المشترك» عند اختياره", "true", String(coversPill(1)));
+
+// ================= ٣) الانحدار: بلا الجزيرة يعود الكسر (يحرس الإصلاح) =================
+thumb.removeAttribute("data-cml-noflip");
+void document.documentElement.offsetHeight;
+selectPill(0);
+check("بلا الجزيرة: المرساة تنقلب فيقع المؤشر خطأً (إثبات أن الإصلاح هو الفاعل)",
+  "false", String(coversPill(0)));
+thumb.setAttribute("data-cml-noflip", "computed");
+
+// ================= ٤) إطفاء البوابة يعيد كل شيء كما كان =================
+document.documentElement.removeAttribute("data-cml-rtl");
+document.documentElement.removeAttribute("dir");
+void document.documentElement.offsetHeight;
+selectPill(0);
+check("بعد الإطفاء: الحال كما قبل التعريب", "true", String(coversPill(0)));
+
+// ================= ٥) قاعدة المولّد: origin لم يعد يُقلب أصلًا =================
+check("★ المولّد لا يقلب transform-origin", "null",
+  String(CMLRtl.analyzeDecl("transform-origin", "left")));
+check("ولا perspective-origin", "null",
+  String(CMLRtl.analyzeDecl("perspective-origin", "left")));
+check("وبقي قلب background-position (موضعٌ بصريٌّ لا محسوب)", "flip",
+  (CMLRtl.analyzeDecl("background-position", "left top") || {}).kind);
+
+document.title = "thumbtest " + pass + "/" + total;
+var h = document.createElement("p");
+h.className = pass === total ? "ok" : "bad";
+h.textContent = "THUMB: " + pass + "/" + total + (pass === total ? " — all pass" : " — FAIL");
+document.body.appendChild(h);
+</script>

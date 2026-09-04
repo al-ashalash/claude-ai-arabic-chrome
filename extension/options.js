@@ -35,9 +35,13 @@
   var IMPORT_MAX_TERMS = CMLConst.IMPORT_MAX_TERMS;
   var IMPORT_MAX_RULES = CMLConst.IMPORT_MAX_RULES;
   // flash يضع علمًا أثناء عرض الرسالة، فلا تدهسها إعادةُ رسمٍ متزامنة (renderScan مثلًا)
-  function flash(el, msg) {
+  // isErr اختياري؛ وبغيابه تُستنتج من صدر الرسالة (صيغُ الإخفاق المعتمدة في الصفحة)
+  // — فالخطأ والنجاح كانا لونًا واحدًا لا يميّزهما المستخدم
+  function flash(el, msg, isErr) {
     if (!el) return;
     el.textContent = msg;
+    var err = isErr !== undefined ? !!isErr : /^(?:تعذّر|خطأ|فشل|لا يمكن|✗|أُخفق)/.test(msg || "");
+    if (el.classList) el.classList.toggle("err", err);
     if (!msg) { delete el.dataset.flashing; return; }
     el.dataset.flashing = "1";
     setTimeout(function () {

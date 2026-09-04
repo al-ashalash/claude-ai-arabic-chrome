@@ -37,6 +37,7 @@ document.title = "synctest …";
 </script>
 <script src="_chrome-mock.js"></script>
 <script src="../extension/cml-const.js"></script>
+<script src="../extension/cml-shared.js"></script>
 <script src="../extension/cml-sync.js"></script>
 <script>
 var tb = document.querySelector("#tbl tbody"), pass = 0, total = 0;
@@ -162,7 +163,8 @@ async function main() {
 
   // ================= ٢) بوابة الموافقة: قبل العلم لا تخرج بايتة واحدة =================
   var ovA = { ar: { "Color": "أصلي", "Doomed": "سيُحذف", "Shared key": "قيمة مشتركة" } };
-  var patA = [{ s: "Regenerate", t: "أعد التوليد" }];
+  // قواعد حقيقية من makePattern: التعقيم على باب الدمج يُسقط ما لا يولّده الحارس نفسُه
+  var patA = [CMLShared.makePattern("Regenerate {n} times", "أعد التوليد {n} مرات")];
   MA.localStore[K.OVERRIDES] = ovA;
   MA.localStore[K.USER_PATTERNS] = patA;
   MA.localStore[K.SYNC_DEVICE] = "devA";
@@ -196,7 +198,7 @@ async function main() {
 
   // ================= ٤) الاستقبال على «ب»: اتحادٌ أول ثم دفعُ الزيادة والتقارب =================
   var ovB = { ar: { "B only": "خاص بالجهاز ب" } };
-  var patB = [{ s: "Retry", t: "أعد المحاولة" }];
+  var patB = [CMLShared.makePattern("Retry {n} times", "أعد المحاولة {n} مرات")];
   MB.localStore[K.SYNC_ENABLED] = true;
   MB.localStore[K.SYNC_DEVICE] = "devB";
   MB.localStore[K.OVERRIDES] = ovB;
@@ -414,6 +416,26 @@ async function main() {
                               everSynced: syncedHashN2 === syncedHashN2 }, remoteN2, CLOCK.t + 6000);
   check("وحين تكون حالتي مرفوعةً فعلًا يعمل الحذف بالغياب", "one",
         Object.keys(mN2b.overrides.ar || {}).join(","));
+
+  // ★★ (مراجعة الأمن) لقطةٌ عدائية من جهازٍ آخر: قاعدةٌ بتعبيرٍ كارثيّ التراجع، وقاعدةٌ
+  // بـar غير نصّيّ، وتصحيحٌ كائنيّ، ومفتاحٌ موروث — لا يصل شيءٌ منها إلى المحرّك
+  var evilP = { o: { ar: { "Delete": { x: 1 }, "constructor": "مدسوس", "Save": "احفظ" }, "not-a-lang!": { "A": "ب" } },
+                p: [ { re: "^(a+)+$", en: "{a} x", ar: "$1 س" }, { re: "^Open (.+)$", en: "Open {n}", ar: 5 },
+                     { re: "^Reply to (.+?)$", en: "Reply to {name}", ar: "الرد على $1" } ] };
+  var evilJson = JSON.stringify(evilP);
+  var evilPayload = { overrides: evilP.o, patterns: evilP.p };
+  var evilSnap = {};
+  evilSnap[K.SYNC_META] = { v: 1, rev: 50, at: CLOCK.t, device: "evil-dev", count: CMLSync.countPayload(evilPayload),
+                            hash: CMLSync.hashPayload(evilPayload), chunks: 1 };
+  evilSnap[K.SYNC_CHUNK_PREFIX + "0"] = evilJson;
+  var un = CMLSync.unpack(evilSnap);
+  // التعقيم على باب الدمج (unpack سلامةُ كتابةٍ محضة): ما يصل التخزين هو ناتج mergeIn
+  var mEvil = un ? CMLSync.mergeIn({ overrides: {}, patterns: [], tombs: {}, at: 0, everSynced: false }, un, CLOCK.t + 1) : null;
+  check("★★ التعقيم: التصحيحات نصٌّ إلى نصٍّ فقط وبلا أعضاء موروثة ولا لغة باطلة", "ar:Save",
+        mEvil ? Object.keys(mEvil.overrides).map(function (l) { return l + ":" + Object.keys(mEvil.overrides[l]).join(","); }).join(";") : "null");
+  check("★★ التعقيم: لا تصل قاعدةٌ إلا ما يولّده makePattern نفسُه", "1/Reply to {name}",
+        mEvil ? mEvil.patterns.length + "/" + (mEvil.patterns[0] ? mEvil.patterns[0].en : "") : "null");
+  check("★★ والتعبير الكارثيّ لم يصل بحال", "true", String(!mEvil || !mEvil.patterns.some(function (p) { return /(a+)+/.test(p.re); })));
 
   // ================= ٩) محو السحابة: الجهاز الآخر سليم محليًّا وقادر على البناء =================
   CLOCK.t = T0 + 10000;

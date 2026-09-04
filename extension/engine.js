@@ -202,10 +202,10 @@
       if (!m) continue;
       var bad = false;
       var out = patRes[i].ar
-        .replace(/%M(\d)/g, function (t, g) { var v = MONTHS[m[+g]]; if (v === undefined) { bad = true; return t; } return v; })
-        .replace(/%W(\d)/g, function (t, g) { var v = WDAYS[m[+g]]; if (v === undefined) { bad = true; return t; } return v; })
-        .replace(/%P(\d)/g, function (t, g) { var v = PERIODS[m[+g]]; if (v === undefined) { bad = true; return t; } return v; })
-        .replace(/%C(\d)/g, function (t, g) { var raw = m[+g]; if (raw === undefined) return ""; var v = PLACES[raw]; return v === undefined ? raw : v; })
+        .replace(/%M(\d)/g, function (t, g) { var v = ownGet(MONTHS, m[+g]); if (v === undefined) { bad = true; return t; } return v; })
+        .replace(/%W(\d)/g, function (t, g) { var v = ownGet(WDAYS, m[+g]); if (v === undefined) { bad = true; return t; } return v; })
+        .replace(/%P(\d)/g, function (t, g) { var v = ownGet(PERIODS, m[+g]); if (v === undefined) { bad = true; return t; } return v; })
+        .replace(/%C(\d)/g, function (t, g) { var raw = m[+g]; if (raw === undefined) return ""; var v = ownGet(PLACES, raw); return v === undefined ? raw : v; })
         .replace(/\$(\d)/g, function (t, g) { return m[+g] !== undefined ? m[+g] : ""; });
       if (!bad) return out; // an unmapped %M/%W/%P means the pattern didn't really fit — try the next one
     }
@@ -241,13 +241,20 @@
   var LOOKUP_CACHE_MAX = CONST.LOOKUP_CACHE_MAX;
 
   // سلسلة البحث الموحّدة: القاموس ← الجموع ← الأنماط. null = لا ترجمة.
+  // ★ قراءةٌ بالملكية لا بالوراثة: نصُّ واجهةٍ يساوي اسمَ عضوٍ موروثٍ من Object.prototype
+  // (constructor، toString، valueOf، __proto__…) كان يُستبدل بمصدر دالةٍ داخلية — وعناوين
+  // المحادثات والمشاريع نصوصٌ يتحكّم بها المستخدم وتقع خارج استثناء متن المحادثة
+  function ownGet(o, k) {
+    return (o && Object.prototype.hasOwnProperty.call(o, k)) ? o[k] : undefined;
+  }
+
   function lookup(key) {
     if (lookupCache) {
       var hit = lookupCache.get(key);
       if (hit !== undefined) return hit;
     }
-    var v = active.overrides[key];
-    if (v === undefined) v = active.strings[key];
+    var v = ownGet(active.overrides, key);
+    if (v === undefined) v = ownGet(active.strings, key);
     if (v === undefined) { var pl = tryPlural(key); if (pl !== null) v = pl; }
     if (v === undefined) { var pt = tryPatterns(key); if (pt !== null) v = pt; }
     var out = v === undefined ? null : v;

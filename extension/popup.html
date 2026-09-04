@@ -7,39 +7,41 @@
        الصامتة، و--accent أخوه الأدكن لما يحمل نصًّا — لأن لون الأيقونة تباينه 2.97 على
        الفاتح والمطلوب 4.5. ولا يجوز أن تختلف المنبثقة عن الإعدادات فتبدو الإضافة بلونين. */
     :root { --bg:#faf9f7; --fg:#1a1a19; --mut:#6b6b68; --line:#e3e1dc;
-            --brand:#d97757; --accent:#a34e30; --accent-fg:#ffffff; }
+            --brand:#d97757; --accent:#a34e30; --accent-fg:#ffffff; --ctl:#85827c; }
     @media (prefers-color-scheme: dark) { :root { --bg:#1f1e1d; --fg:#f3f2ef; --mut:#a3a29e; --line:#3a3937;
-            --brand:#d97757; --accent:#e9a084; --accent-fg:#2a1610; } }
+            --brand:#d97757; --accent:#e9a084; --accent-fg:#2a1610; --ctl:#7d7b77; } }
     * { box-sizing: border-box; }
-    body { width: 320px; margin: 0; padding: 14px; background: var(--bg); color: var(--fg);
+    /* كان ارتفاعها 645px بعرض 320 فيتجاوز سقف كروم 600 — فأول ما يراه المستخدم شريطُ تمرير */
+    body { width: 320px; margin: 0; padding: 12px 12px 10px; background: var(--bg); color: var(--fg);
       font-family: "Segoe UI", Tahoma, sans-serif; font-size: 14px; }
     h1 { font-size: 15px; margin: 0 0 2px; }
-    .sub { color: var(--mut); font-size: 12px; margin: 0 0 12px; }
+    .sub { color: var(--mut); font-size: 12px; margin: 0 0 8px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      padding: 9px 0; border-top: 1px solid var(--line); }
+      padding: 7px 0; border-top: 1px solid var(--line); }
     label { font-weight: 600; }
-    select, input, button { font: inherit; padding: 6px 8px; border: 1px solid var(--line);
+    select, input, button { font: inherit; padding: 5px 8px; border: 1px solid var(--ctl);
       border-radius: 8px; background: var(--bg); color: var(--fg); }
     button { cursor: pointer; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
     .primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
     .badge { font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); color: var(--mut); }
     .switch { position: relative; width: 42px; height: 24px; flex: none; }
     /* الحقل يغطي المفتاح كاملًا وهو شفاف: كان بأبعاد صفرية و«الزالقة» تحجب النقر،
        فلم تكن المفاتيح تستجيب للفأرة إطلاقًا (لوحة المفاتيح وحدها). نفس نمط صفحة الإعدادات. */
     .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-    .slider { position: absolute; inset: 0; background: var(--line); border-radius: 24px; transition: .2s; pointer-events: none; }
+    .slider { position: absolute; inset: 0; background: var(--ctl); border-radius: 24px; transition: .2s; pointer-events: none; }
     .slider::before { content: ""; position: absolute; height: 18px; width: 18px; right: 3px; top: 3px;
       background: #fff; border-radius: 50%; transition: .2s; }
     input:checked + .slider { background: var(--brand); }  /* تعبئة بلا نصّ ⇒ لون الأيقونة نفسه */
     input:checked + .slider::before { transform: translateX(-18px); }
     .switch input:focus-visible + .slider { outline: 2px solid var(--brand); outline-offset: 2px; }
-    .add { display: grid; grid-template-columns: 1fr; gap: 6px; padding-top: 10px; }
+    .add { display: grid; grid-template-columns: 1fr; gap: 5px; padding-top: 8px; }
     .add input { width: 100%; }
-    .hint { color: var(--mut); font-size: 11.5px; margin-top: 10px; line-height: 1.6; }
+    .hint { color: var(--mut); font-size: 11px; margin-top: 6px; line-height: 1.45; }
     .ok { color: var(--accent); font-size: 12px; min-height: 16px; }
     .count { color: var(--mut); font-size: 11.5px; }
-    .privacy { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
-      color: var(--mut); font-size: 11.5px; line-height: 1.6; }
+    .privacy { margin-top: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px;
+      color: var(--mut); font-size: 11px; line-height: 1.45; }
   </style>
 </head>
 <body>

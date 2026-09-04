@@ -17,6 +17,9 @@
       --brand:#d97757; --accent:#a34e30; --accent-fg:#ffffff; --ok:#a34e30;
       --danger:#b3261e; --danger-bg:#fbeceb;
       --tag-bg:#fbe6de; --tag-fg:#8f4426;
+      /* حدودُ عناصر التحكم أدكنُ من الفواصل: الفواصلُ زينةٌ تجوز خفوتُها، أما حدُّ الحقل
+         والمفتاحُ المطفأ فمكوّنا واجهةٍ يلزمهما 3:1 (WCAG 1.4.11) — كانا 1.3:1 فلا يُريان */
+      --ctl:#85827c; --warn:#8a5a2b;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -25,6 +28,7 @@
         --brand:#d97757; --accent:#e9a084; --accent-fg:#2a1610; --ok:#e9a084;
         --danger:#f2b8b5; --danger-bg:#3a2422;
         --tag-bg:#3a2419; --tag-fg:#f0b79b;
+        --ctl:#7d7b77; --warn:#e2b07e; /* التنبيهُ الصلب #8a5a2b كان 2.6:1 على الداكن */
       }
     }
     * { box-sizing: border-box; }
@@ -39,21 +43,25 @@
     .row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid var(--line); }
     .row:first-of-type { border-top:none; }
     .row label { font-weight:600; }
-    select, input, button, textarea { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
+    select, input, button, textarea { font:inherit; padding:7px 9px; border:1px solid var(--ctl); border-radius:8px; background:var(--bg); color:var(--fg); }
     button { cursor:pointer; }
     button:hover { border-color:var(--accent); }
+    /* المعطَّل كان مطابقًا للمفعَّل تمامًا بمؤشر يدٍ — فيضغطه المستخدم ولا يفهم الصمت */
+    button:disabled, button:disabled:hover { opacity:.55; cursor:not-allowed; border-color:var(--ctl); filter:none; }
     .primary { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); }
     .primary:hover { filter:brightness(1.06); }
     .ghost { background:transparent; }
     .btnrow { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
     .switch { position:relative; width:42px; height:24px; flex:none; }
     .switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
-    .slider { position:absolute; inset:0; background:var(--line); border-radius:24px; transition:.2s; pointer-events:none; }
+    .slider { position:absolute; inset:0; background:var(--ctl); border-radius:24px; transition:.2s; pointer-events:none; }
     .slider::before { content:""; position:absolute; height:18px; width:18px; right:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
     .switch input:checked + .slider { background:var(--brand); }  /* تعبئة بلا نصّ ⇒ لون الأيقونة نفسه */
     .switch input:checked + .slider::before { transform:translateX(-18px); }
     .switch input:focus-visible + .slider { outline:2px solid var(--brand); outline-offset:2px; }
     .status { color:var(--ok); font-size:12.5px; min-height:18px; margin-top:8px; }
+    .status.err { color:var(--danger); } /* الخطأ والنجاح كانا لونًا واحدًا فلا يُميَّزان */
+    .warn { color:var(--warn) !important; }
     .count { color:var(--mut); font-size:12.5px; }
     .search { width:100%; margin:2px 0 8px; }
     .terms { width:100%; }
@@ -78,6 +86,14 @@
     .donut circle { transition:stroke-dasharray .5s ease; }
     .donut .pct { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14.5px; }
     .cap { text-align:center; font-size:11.5px; color:var(--mut); margin-top:4px; }
+    /* دون ~520px كان صفُّ «إضافة تصحيح» وصفُّ البحث يفيضان فتُقصّ الصفحة من طرفها */
+    @media (max-width:520px) {
+      body { padding:16px 12px 48px; }
+      .row { flex-wrap:wrap; }
+      .row > input, .row > select, .row > textarea { flex:1 1 160px; min-width:0; }
+      .term { grid-template-columns:1fr; }
+      .term .acts { justify-content:flex-end; }
+    }
     .statTxt { font-size:12.5px; color:var(--mut); line-height:1.8; flex:1; min-width:210px; }
     .more { color:var(--mut); font-size:12px; padding:8px 0; }
     .danger { border-color:var(--danger); }
@@ -275,7 +291,7 @@
         ويقارنها بالمصدر، فيقيس نسبة التغطية ويجلب <b>غير المترجَم</b> إلى «قاموس التعريب» أعلاه —
         حيث تجد النِّسَب والقائمة وأدوات الترجمة.
       </p>
-      <p class="desc" style="color:#8a5a2b">
+      <p class="desc warn">
         افتح تبويب <b>claude.ai</b> واتركه مفتوحًا، ثم اضغط «ابدأ الفحص». يستغرق دقيقة أو دقيقتين.
       </p>
       <div class="row" style="border:none;padding-top:2px">
@@ -314,7 +330,7 @@
         يفحص تنسيقات الموقع الحية ويكشف ما استجدّ منها ولا يقلبه محرّك الاتجاه بعدُ —
         شقيق «فحص الموقع» أعلاه.
       </p>
-      <p class="desc" style="color:#8a5a2b">
+      <p class="desc warn">
         افتح تبويب <b>claude.ai</b> واتركه مفتوحًا، ثم اضغط «ابدأ فحص الاتجاه». يستغرق ثوانيَ معدودة.
       </p>
       <div class="row" style="border:none;padding-top:2px">

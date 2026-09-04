@@ -10,7 +10,7 @@
 // (الذي لا يشغّل عمال خدمة أصلًا). في الصفحة لا وجود لـimportScripts، ولا حاجة
 // إليها: مانيفست فايرفوكس يسرد cml-const وcml-arbiter وcml-sync قبل هذا الملف في
 // background.scripts بالترتيب نفسه، فالكائنات حاضرة قبل أن نصل هنا.
-if (typeof importScripts === "function") importScripts("cml-const.js", "cml-arbiter.js", "cml-sync.js");
+if (typeof importScripts === "function") importScripts("cml-const.js", "cml-shared.js", "cml-arbiter.js", "cml-sync.js");
 
 var arbiter = CMLArbiter.createArbiter();
 

@@ -208,6 +208,57 @@
     return { payload: payload, meta: meta };
   }
 
+  // ★ (مراجعة الأمن) اللقطة البعيدة كانت تُدمَج حرفيًّا بلا فحصٍ لمحتواها: قاعدةٌ عدائية
+  // من جهازٍ آخر (أو حسابٍ اختُرق) تصل المحرّك فيركّبها new RegExp متجاوزةً كلَّ حرّاس
+  // makePattern — تراجعٌ أسّيٌّ يجمّد تبويب claude.ai، أو ar غير نصّيّ يقتل المحرّك
+  // بـTypeError — ثم تُدفع اللقطةُ المسمومة لكل الأجهزة بهوية الجهاز السليم.
+  // القاعدة: القاعدةُ لا تُقبل إلا إذا أعاد makePattern توليدَها من (en, ar) وطابق re
+  // المخزَّن — فلا يصل new RegExp إلا ما كان حارسُنا نفسُه ليولّده. والتصحيحُ نصٌّ إلى
+  // نصٍّ بطولٍ معقول تحت لغةٍ برمزٍ صحيح، وأسماءُ الأعضاء الموروثة مرفوضة.
+  var LANG_RE = /^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/;
+  var TEXT_CAP = (C && C.TEXT_MAX) || 300;
+  function sanitizePayload(payload) {
+    var shared = g.CMLShared;
+    var o = {}, src = (payload && payload.overrides) || {};
+    for (var lang in src) {
+      if (!own(src, lang) || !LANG_RE.test(lang)) continue;
+      var m = src[lang];
+      if (!m || typeof m !== "object" || Array.isArray(m)) continue;
+      var out = null;
+      for (var k in m) {
+        if (!own(m, k) || k === "__proto__" || k === "constructor" || k === "prototype") continue;
+        var v = m[k];
+        if (!k || typeof v !== "string" || k.length > TEXT_CAP || v.length > TEXT_CAP * 2) continue;
+        if (!out) out = {};
+        out[k] = v;
+      }
+      if (out) o[lang] = out;
+    }
+    var p = [], srcP = Array.isArray(payload && payload.patterns) ? payload.patterns : [];
+    for (var i = 0; i < srcP.length; i++) {
+      var r = srcP[i];
+      if (!r || typeof r !== "object" || typeof r.en !== "string" || typeof r.ar !== "string") continue;
+      if (r.en.length > TEXT_CAP || r.ar.length > TEXT_CAP * 2) continue;
+      if (!shared || typeof shared.makePattern !== "function") continue; // بلا حارس لا قاعدة
+      // المخزَّن يحمل ar بصيغة القالب ($1 $2) وmakePattern يستقبل صيغة {الاسم}: نُعيد بناء
+      // صيغة الإدخال من أسماء متغيّرات en بترتيبها، ونطالب بتطابق re وar معًا مع ما يولّده
+      var names = [], vm, VR = new RegExp(shared.VAR_RE.source, "g");
+      while ((vm = VR.exec(r.en))) names.push(vm[1]);
+      var badRef = false;
+      var arIn = r.ar.replace(/\$(\d)/g, function (t, g2) {
+        var nm = names[+g2 - 1];
+        if (nm === undefined) { badRef = true; return t; }
+        return "{" + nm + "}";
+      });
+      if (badRef) continue;
+      var gen = shared.makePattern(r.en, arIn);
+      if (!gen || gen.ar !== r.ar) continue;
+      if (typeof r.re === "string" && r.re !== gen.re) continue; // re مدسوسٌ لا يولّده الحارس
+      p.push(gen);
+    }
+    return { overrides: o, patterns: p };
+  }
+
   // ---- الدمج ----------------------------------------------------------------
 
   // اختصارٌ للقراءة في الكود الجديد وحده (الباقي على صيغته الصريحة كما كُتب)
@@ -310,6 +361,9 @@
   // everSynced: هل سبق لهذا الجهاز أن طابق السحابة (lasthash موجود)؟ قبل أول مطابقة
   //   لا معنى لانتشار الحذف بالغياب — فالدمج الأول اتحادٌ صِرف لا يُسقط شيئًا محليًّا.
   function mergeIn(local, remote, nowMs) {
+    // ★ التعقيم على باب الدمج لا في unpack: unpack سلامةُ كتابةٍ (بصمتُه بصمةُ السحابة
+    // فيصدق حارسُ الصدى)، وما يُقبل إلى التخزين المحلي هو المعقَّم وحده
+    if (remote && remote.payload) remote = { payload: sanitizePayload(remote.payload), meta: remote.meta };
     var lo = (local && local.overrides) || {};
     var lp = (local && local.patterns) || [];
     var tombs = pruneTombs((local && local.tombs) || {}, nowMs);

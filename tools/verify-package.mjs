@@ -16,6 +16,20 @@ need(/^\d+\.\d+\.\d+$/.test(mf.version || ""), "version ليس بصيغة x.y.z:
 need(Array.isArray(mf.permissions) && mf.permissions.length === 1 && mf.permissions[0] === "storage",
   "الصلاحيات يجب أن تبقى [storage] وحدها — وجدت: " + JSON.stringify(mf.permissions));
 need(!mf.host_permissions, "لا host_permissions في هذه الإضافة");
+// ★ (مراجعة الأمن) الصلاحيات وحدها لا تحدّ المدى: مانيفستٌ يوسَّع بأي طريقٍ أخرى كان
+// يمرّ من هنا ثم يُحزَم ويُنشر. فكلُّ سطحٍ يوسّع المدى ممنوعٌ صراحةً، ونطاقاتُ المطابقة
+// محصورةٌ في claude.ai — تغييرُ أيٍّ منها قرارٌ يُتَّخذ هنا بالتصريح لا بالمرور الصامت.
+for (const k of ["optional_permissions", "optional_host_permissions", "externally_connectable",
+                 "web_accessible_resources", "content_security_policy", "declarative_net_request"]) {
+  need(!(k in mf), "المفتاح " + k + " يوسّع مدى الإضافة وليس في عقدها");
+}
+const ALLOWED_MATCH = new RegExp("^https://(?:(?:[a-z0-9-]+|\\*)\\.)?claude\\.ai/\\*$");
+for (const cs of mf.content_scripts || []) {
+  need(Array.isArray(cs.matches) && cs.matches.length > 0, "content_scripts بلا matches");
+  for (const m of cs.matches) need(ALLOWED_MATCH.test(m), "نطاق مطابقة خارج claude.ai: " + m);
+  need(!cs.match_about_blank && !cs.match_origin_as_fallback, "content_scripts تمتدّ إلى أُطرٍ خارج النطاق");
+}
+need(!mf.permissions.some((p) => /^(?:https?|file|ftp):|^\*|^<all_urls>$/.test(p)), "نطاق مضيف مدسوس في permissions");
 need(mf.background && mf.background.service_worker === "sw.js", "background.service_worker يجب أن يكون sw.js");
 
 // كل ملف يشير إليه المانيفست موجود فعلًا

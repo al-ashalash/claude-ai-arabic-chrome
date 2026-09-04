@@ -69,6 +69,23 @@ function copyDir(src, dest) {
 // نُفرِّغ **محتوى** المجلد لا المجلد نفسه: حذف الجذر يفشل بـEPERM متى كان مفتوحًا في
 // مستكشف الملفات أو محرِّر أو خادم — وهو الغالب أثناء العمل. وتفريغ المحتوى يكفي.
 // و`.git` مستثنًى: المجلد يصير مستودعًا بعد أول رفع، فحذفُه يمحو تاريخه كله.
+// ★ (مراجعة الأمن) الإفراغُ لا يقع إلا على وجهةِ نشرٍ مُثبتة: وسيطٌ خاطئ ("." من web/،
+// أو ".."، أو مجلدٌ شخصي) كان يمحو بياناتٍ لا رجعة فيها ثم يفشل النسخ لأن المصدر نفسه
+// مُحي. الوجهةُ إمّا غيرُ موجودة/فارغة، أو فيها بصمةُ نشرٍ سابق: extension/manifest.json
+// باسم إضافتنا نفسِه. وليست الجذرَ ولا أحدَ أسلافه ولا سلفَ مجلد العمل.
+{
+  const rootAbs = path.resolve(ROOT), cwdAbs = path.resolve(process.cwd());
+  const isAncestorOf = (a, b) => b === a || b.startsWith(a + path.sep);
+  if (isAncestorOf(OUT, rootAbs) || isAncestorOf(OUT, cwdAbs) || isAncestorOf(rootAbs, OUT)) {
+    console.error("✗ الوجهة ليست مجلد نشرٍ مستقلًّا: " + OUT); process.exit(1);
+  }
+  if (fs.existsSync(OUT) && fs.readdirSync(OUT).some((e) => e !== ".git")) {
+    const prev = path.join(OUT, "extension", "manifest.json");
+    let ok = false;
+    try { ok = JSON.parse(fs.readFileSync(prev, "utf8")).name === JSON.parse(fs.readFileSync(path.join(ROOT, "web", "user", "extension", "manifest.json"), "utf8")).name; } catch {}
+    if (!ok) { console.error("✗ الوجهة غير فارغة وليست فيها بصمة نشرٍ سابق لهذه الإضافة — لن أفرغها: " + OUT); process.exit(1); }
+  }
+}
 if (fs.existsSync(OUT)) {
   for (const e of fs.readdirSync(OUT)) {
     if (e === ".git") continue;

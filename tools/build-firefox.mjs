@@ -55,7 +55,7 @@ delete mf.version_name; // فايرفوكس لا يعرفه ويحذّر من ا
 //    الترتيب هو ترتيب importScripts في sw.js سواءً بسواء — الثوابت فالمحكّم
 //    فالمزامنة فالغراء — لأن sw.js في الصفحة لا يستورد شيئًا (حارس typeof
 //    importScripts) بل يجد الكائنات محمَّلةً قبله بهذا الترتيب بالذات.
-mf.background = { scripts: ["cml-const.js", "cml-arbiter.js", "cml-sync.js", "sw.js"] };
+mf.background = { scripts: ["cml-const.js", "cml-shared.js", "cml-arbiter.js", "cml-sync.js", "sw.js"] };
 
 // ٣) هوية gecko: بدونها يرفض فايرفوكس MV3 الإضافة، وبحدّ 127 نضمن أن كل من
 //    ثبّتها يرى سلوكَ الأذون الذي بُنيت عليه شاشةُ الإرشاد.
@@ -79,8 +79,8 @@ if (back) {
   need(back.minimum_chrome_version === undefined, "minimum_chrome_version لم يُحذف");
   need(back.version_name === undefined, "version_name لم يُحذف (فايرفوكس يحذّر منه)");
   need(back.background && back.background.service_worker === undefined, "service_worker بقي في المانيفست");
-  need(back.background && Array.isArray(back.background.scripts) && back.background.scripts.length === 4,
-    "background.scripts ليست قائمة الملفات الأربعة");
+  need(back.background && Array.isArray(back.background.scripts) && back.background.scripts.length === 5,
+    "background.scripts ليست قائمة الملفات الخمسة");
   for (const f of (back.background && back.background.scripts) || []) {
     need(fs.existsSync(path.join(OUT, f)), "ملف خلفية يذكره المانيفست مفقود: " + f);
   }

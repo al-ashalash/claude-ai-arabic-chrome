@@ -23,25 +23,30 @@ chrome.runtime.onConnect.addListener(function (port) {
 // — من الذاكرة إن طابقت البصمة، وإلا جلبًا وبناءً وتخزينًا. العملُ هنا لا في الصفحة:
 // البناء ~360 مث، ووقوعُه في خيط الصفحة يظهر تلعثمًا عند كل تحديثٍ للموقع.
 // (الأصول تُخدَم بـaccess-control-allow-origin: * فيجلبها العامل بلا صلاحية مضيف.)
-var liveBuilding = null; // طلبٌ واحدٌ في الطيران: تبويباتٌ عدّة تنتظر النتيجة نفسها
+// ★★ خريطةٌ بالبصمة لا خانةٌ واحدة: طلبٌ ببصمةٍ جديدة كان يدهس القائم فيصل ردُّ
+// البناء الأول إلى صاحب البصمة الثانية (فتخمد ورقةُ اللقطة على ورقةٍ ليست لها)،
+// والأولُ لا يُردّ عليه أبدًا. والقائمةُ محفوظةٌ في مغلَّف الطلب نفسِه.
+var liveBuilding = Object.create(null);
 function buildLive(urls, fp, cb) {
   var K = CMLConst.K;
   chrome.storage.local.get([K.RTL_LIVE], function (r) {
     void chrome.runtime.lastError;
     var have = r && r[K.RTL_LIVE];
     if (have && have.fp === fp && have.css) { cb({ css: have.css, cached: true }); return; }
-    if (liveBuilding && liveBuilding.fp === fp) { liveBuilding.waiting.push(cb); return; }
-    liveBuilding = { fp: fp, waiting: [cb] };
+    if (liveBuilding[fp]) { liveBuilding[fp].push(cb); return; }
+    var waiting = liveBuilding[fp] = [cb];
     var list = urls.slice(0, CMLConst.RTL_LIVE_SHEETS_MAX);
     Promise.all(list.map(function (u) {
       return fetch(u).then(function (res) { return res.ok ? res.text() : null; }).catch(function () { return null; });
-    })).then(function (texts) {
+    })).catch(function () { return []; }).then(function (texts) {
       var ok = texts.filter(function (t) { return typeof t === "string" && t.length; });
-      var built = ok.length ? CMLRtl.buildLiveSheet(ok) : null;
+      // ★ الرميةُ تُلتقط: كانت تترك القفل قائمًا فتُبتلع كل الطلبات اللاحقة بلا ردّ،
+      // فيبقى التبويب على ورقة اللقطة صامتًا — وهو عين ما وُلد الحيّ لعلاجه
+      var built = null;
+      try { built = ok.length ? CMLRtl.buildLiveSheet(ok) : null; } catch (e) { built = null; }
       var done = function (payload) {
-        var w = liveBuilding ? liveBuilding.waiting : [];
-        liveBuilding = null;
-        for (var i = 0; i < w.length; i++) { try { w[i](payload); } catch (e) {} }
+        delete liveBuilding[fp];
+        for (var i = 0; i < waiting.length; i++) { try { waiting[i](payload); } catch (e) {} }
       };
       // بناءٌ أخفق (أوراق لم تُجلب، أو بوابتا الصحّة رفضتا) ⇒ لا نكتب شيئًا،
       // فتبقى ورقةُ اللقطة عاملةً — الإخفاق لا يُنقص المستخدم شيئًا

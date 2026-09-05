@@ -105,10 +105,23 @@
     }
     return out.sort();
   }
+  // ★ عند document_start لا أوراقَ في الصفحة بعد، فكان الطلب يخرج صامتًا ولا يُعاود
+  // أبدًا (رُصد حيًّا: liveInjected=false). فيُعاود عند اكتمال الصفحة وبعد مهلتين،
+  // وأولُ نجاحٍ يختم liveAsked فلا تكرار.
+  function scheduleLiveSheet() {
+    applyLiveSheet();
+    if (document.readyState !== "complete") {
+      window.addEventListener("load", applyLiveSheet, { once: true });
+    }
+    setTimeout(applyLiveSheet, 1500);
+    setTimeout(applyLiveSheet, 5000);
+  }
   function applyLiveSheet() {
     if (!state.enabled || !state.rtl || state.rtlEngine !== "v2") return;
     if (!chrome.runtime || !chrome.runtime.sendMessage) return;
     var urls = liveSheetUrls();
+    // عند document_start لا أوراق بعدُ في <head> — لا نبصم فراغًا ولا نيأس، بل نُعاود
+    // عند اكتمال الوثيقة وبمهلتين احتياطيتين (أوراقٌ تُحقن بجافاسكربت بعد الحمل)
     if (!urls.length) return;
     var fp = CMLRtl && CMLRtl.fnv1a ? CMLRtl.fnv1a(urls.join("|")) : urls.join("|");
     if (liveAsked === fp) return; // سُئل عنها في هذه الحياة
@@ -116,7 +129,7 @@
     try {
       chrome.runtime.sendMessage({ type: "rtlcss", urls: urls, fp: fp }, function (res) {
         void chrome.runtime.lastError;
-        if (!res || !res.css) return; // إخفاق ⇒ تبقى ورقةُ اللقطة (بوابة v2) عاملة
+        if (!res || !res.css) { liveAsked = null; return; } // إخفاق ⇒ تبقى اللقطة، ونُعاود لاحقًا
         var el = document.getElementById("cml-live-rtl");
         if (!el) {
           el = document.createElement("style");
@@ -133,7 +146,7 @@
   }
 
   function applyChrome() {
-    setTimeout(applyLiveSheet, 0); // بعد ضبط السمات، وخارج المسار الحرج
+    setTimeout(scheduleLiveSheet, 0); // بعد ضبط السمات، وخارج المسار الحرج
     var html = document.documentElement;
     if (!html) return;
     saveOriginals(html);
@@ -1245,6 +1258,11 @@
 
   function start() {
     compile(); applyChrome();
+    // معاودةُ المحرّك الحيّ بعد وجود الأوراق فعلًا (الحارس liveAsked يمنع التكرار)
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", applyLiveSheet, { once: true });
+    window.addEventListener("load", applyLiveSheet, { once: true });
+    setTimeout(applyLiveSheet, 1500);
+    setTimeout(applyLiveSheet, 5000);
     if (document.body) fullPass();
     else document.addEventListener("DOMContentLoaded", fullPass, { once: true });
     try {
@@ -1315,6 +1333,10 @@
   } catch (e) {}
 
   // immediate default (reduce RTL flash), then refine from storage
+  // ★ كتابةٌ متفائلة بالافتراضات **قبل** قراءة الإعدادات — مقايضةٌ مقصودة لا سهو:
+  // بلا صلاحيةٍ لقراءةٍ متزامنة في MV3، إمّا ومضةُ LTR ثم انقلابٌ لكل مَن فعّل الإضافة
+  // (وهم عامّة مستخدميها)، وإمّا ومضةُ RTL ثم ارتدادٌ لمن أطفأها. اخترنا الثانية لأنها
+  // تصيب الأقلّ، والارتدادُ يقع في الإطار نفسِه غالبًا. ولا يُكتب إلا ما يمنع الومضة.
   compile(); applyChrome();
   loadSettings(start);
 })();

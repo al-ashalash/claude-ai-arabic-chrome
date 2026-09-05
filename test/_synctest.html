@@ -459,7 +459,14 @@ async function main() {
   SHARED.syncStore[K.SYNC_META] = { v: 1, rev: 9, at: CLOCK.t, device: "other-dev", count: 2, hash: "deadbeef", chunks: 2 };
   SHARED.syncStore[K.SYNC_CHUNK_PREFIX + "0"] = "{\"overrides\":{}}";
   var tornEv = {}; tornEv[K.SYNC_META] = { newValue: SHARED.syncStore[K.SYNC_META] };
+  // ★★ التمزّق يُثبَّت بحدثين: لقطةٌ تُقرأ أثناء كتابةِ جهازٍ آخر تبدو ممزّقةً وهي
+  // سليمة، وإصلاحُها من أول حدثٍ كان يدفع حالتَنا بلا دمجٍ فيمحو ما دفعه الآخر
+  var r9pre = await CMLSync.handleSyncChange(envB, tornEv);
+  check("★★ أولُ رؤيةٍ للتمزّق تُسجّل شاهدًا ولا تُصلح", "torn", r9pre && r9pre.done);
+  CLOCK.t += CMLConst.SYNC_TORN_CONFIRM_MS + 1000;
   var r9a = await CMLSync.handleSyncChange(envB, tornEv);
+  var r9pre2 = await CMLSync.handleSyncChange(envA, tornEv);
+  CLOCK.t += CMLConst.SYNC_TORN_CONFIRM_MS + 1000;
   var r9b = await CMLSync.handleSyncChange(envA, tornEv);
   // ★ (دحضٌ مؤكد) كان الجواب «torn» صمتًا: كتابتان متسابقتان تتركان السحابة ممزّقة
   // أبدًا لأن كلا الكاتبين ظنّ أنه أفلح — فالقارئ صار مصلحًا يطبع طابعًا معلّقًا

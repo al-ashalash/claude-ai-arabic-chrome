@@ -763,8 +763,8 @@
     });
   }
 
-  // ---------- الاتجاه (RTL): اختيار المحرّك + طبيب الاتجاه ----------
-  // المحرّك الجذري v2 هو الافتراضي، فاختيارُه لا يُخزَّن قيمةً بل بمحو المفتاح —
+  // ---------- الاتجاه (RTL): اختيار المحرّك + فحص الاتجاه ----------
+  // المحرّك الشامل (v2) هو الافتراضي، فاختيارُه لا يُخزَّن قيمةً بل بمحو المفتاح —
   // على سنّة cml_rtl ونظائره: غيابُ المفتاح افتراضٌ، ووجودُه اختيارٌ صريح للبديل.
   // فلو خزّنّا "v2" صراحةً لتجمّد من اختاره على قيمةٍ قديمة إن بدّلنا الافتراضي يومًا.
   function loadRtlEngine() {
@@ -781,16 +781,16 @@
       patch[CMLConst.K.RTL_ENGINE] = "v1";
       set(patch, function (err) {
         if (err) { flash($("rtlEngineStatus"), "تعذّر الحفظ."); return; }
-        flash($("rtlEngineStatus"), "اختير النقطي v1 — يسري فورًا على تبويبات claude.ai المفتوحة.");
+        flash($("rtlEngineStatus"), "اختير المبسّط — يسري فورًا على تبويبات claude.ai المفتوحة.");
       });
     } else {
       chrome.storage.local.remove(CMLConst.K.RTL_ENGINE, function () {
-        flash($("rtlEngineStatus"), "عاد الجذري v2 (الافتراضي) — يسري فورًا على تبويبات claude.ai المفتوحة.");
+        flash($("rtlEngineStatus"), "عاد الشامل (الموصى به) — يسري فورًا على تبويبات claude.ai المفتوحة.");
       });
     }
   }
 
-  // طبيب الاتجاه يجري داخل صفحة claude.ai (runRtlDoc في المحرّك) لأنه وحده يقرأ ملفات
+  // فحص الاتجاه يجري داخل صفحة claude.ai (runRtlDoc في المحرّك) لأنه وحده يقرأ ملفات
   // تنسيق الموقع. التخاطب كمخاطبة فحص الترجمة سواء بسواء: cml_rtldoc_request طلبًا
   // (على session فيُمحى بإغلاق المتصفح) وcml_rtldoc_result نتيجةً على local.
   // والطبيب يقتسم حجز cml_scan_claim مع فحص الترجمة فلا يجريان معًا ولا طبيبان متوازيان.
@@ -804,12 +804,12 @@
     get([CMLConst.K.RTL_LIVE], function (s) {
       var r = s[CMLConst.K.RTL_LIVE];
       if (!r || !r.css) {
-        box.textContent = "ورقة الاتجاه الحيّة لم تُبنَ بعد — تُبنى تلقائيًّا عند أول فتحٍ لـclaude.ai، وحتى ذلك الحين تعمل الورقة المضمّنة.";
+        box.textContent = "لم يُضبط الاتجاه من الموقع بعد — يجري ذلك تلقائيًّا عند أول فتحٍ لـclaude.ai، وحتى ذلك الحين تعمل الإعدادات المضمّنة في الإضافة.";
         return;
       }
       var d = new Date(r.at || 0);
-      box.textContent = "الورقة الحيّة: " + (r.flipped || 0) + " موضعًا مقلوبًا من " +
-        (r.sources || 0) + " ورقة تنسيقٍ للموقع (" + Math.round((r.bytes || 0) / 1024) + " ك.ب) — بُنيت " +
+      box.textContent = "الاتجاه مضبوط من الموقع: " + (r.flipped || 0) + " موضعًا مُعكَسًا من " +
+        (r.sources || 0) + " ملفَّ تصميم (" + Math.round((r.bytes || 0) / 1024) + " ك.ب) — آخر ضبطٍ " +
         d.toLocaleDateString("ar") + " " + d.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }) + ".";
     });
   }
@@ -849,13 +849,13 @@
     var unc = r.uncovered || 0;
     var shown = (r.list || []).length;
     if (unc) {
-      cnt.textContent = unc + " إعلانًا لا يقلبه المحرّك بعدُ";
+      cnt.textContent = unc + " قاعدة تنسيقٍ لم تُعكس بعد";
     } else {
-      cnt.textContent = "✓ كل ما في الموقع مغطًّى";
+      cnt.textContent = "✓ الاتجاه مضبوط بالكامل";
       cnt.style.color = "var(--ok)";
     }
     var msg = "فُحص " + (r.files || 0) + " ملفًا وفيها " + (r.rules || 0) + " قاعدة، منها " +
-      (r.physical || 0) + " إعلانًا فيزيائيًّا (يذكر يمينًا أو يسارًا): المغطّى " + (r.covered || 0) +
+      (r.physical || 0) + " قاعدةً تذكر يمينًا أو يسارًا: المُعالَج " + (r.covered || 0) +
       " وغيرُ المغطّى " + unc + (unc && shown < unc ? " (يُعرض أول " + shown + ")" : "") +
       "، في " + (r.seconds || 0) + " ثانية.";
     // الصنفان يفترقان (تشخيص حي): 404 «إشارات وهمية» — أسماءٌ تشبه الملفات داخل نصوص
@@ -866,7 +866,7 @@
     if (r.ghosts) msg += " وتجاهل " + r.ghosts + " إشارةً وهمية (أسماء تشبه الملفات داخل النصوص لا ملفات حقيقية — أمر طبيعي).";
     // الأنماط السطرية تُذكر ولا تُعدّ نقصًا: تركُها مبدأٌ في المحرّك لا سهوٌ — فالمحرّك
     // يقلب أصناف التنسيق وحدها، والمواضع التي تحسبها سكربتات الموقع بنفسها لا تُمسّ.
-    msg += " وفي الأنماط السطرية " + (r.inlinePhysical || 0) + " إعلانًا فيزيائيًّا من " +
+    msg += " وفي التنسيقات التي يحسبها الموقع بنفسه " + (r.inlinePhysical || 0) + " قاعدةً من " +
       (r.inlineChecked || 0) + " عنصرًا مفحوصًا — وهذه لا يمسّها المحرّك عمدًا.";
     // لا تدهس رسالة flash نشطة (تأكيد تنزيل مثلًا) — الملخص يبقى متاحًا في العدّاد
     if (!st.dataset.flashing) st.textContent = msg;
@@ -929,7 +929,7 @@
     get([CMLConst.K.RTLDOC_RESULT], function (s) {
       var r = s[CMLConst.K.RTLDOC_RESULT];
       if (!r || r.status !== "done") { flash($("rtlDocStatus"), "لا نتيجة للتنزيل — شغّل فحص الاتجاه أولًا."); return; }
-      download("طبيب-الاتجاه-كلود.json", JSON.stringify({ _app: "claude-mutarjim", _kind: "rtl-doctor", result: r }, null, 2));
+      download("فحص-الاتجاه-كلود.json", JSON.stringify({ _app: "claude-mutarjim", _kind: "rtl-doctor", result: r }, null, 2));
       flash($("rtlDocStatus"), "نُزّلت النتيجة كاملة ✓");
     });
   }
@@ -1231,7 +1231,7 @@
       chrome.storage.local.remove(CMLConst.K.RTL_LIVE, function () {
         void chrome.runtime.lastError;
         renderRtlLive();
-        flash($("rtlEngineStatus"), "مُحيت الورقة الحيّة — تُبنى من جديد عند أول فتحٍ أو تحديثٍ لتبويب claude.ai.");
+        flash($("rtlEngineStatus"), "سيُعاد ضبط الاتجاه من الموقع عند أول فتحٍ أو تحديثٍ لتبويب claude.ai.");
       });
     });
     loadRtlEngine();

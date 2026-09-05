@@ -657,7 +657,13 @@
       if (Object.keys(live).length !== Object.keys(tombs).length) { tombs = live; tombsDirty = true; }
       var lasthash = r[K.SYNC_LASTHASH];
       var state = r[K.SYNC_STATE] || {};
-      var curHash = hashPayload({ overrides: overrides, patterns: patterns });
+      // ★★ التعقيم على الطرفين لا على الوارد وحده: كان الدفعُ يغلّف الحمولة خامًا
+      // فيرسل الجهازُ ما لا يقبله أيُّ جهاز (قيمةٌ فوق السقف مثلًا) — فتختلف البصمتان
+      // أبدًا وتدور الدفعات بلا سكون (قِيس: 498 دفعةً متناوبة). فالمعقَّم هو ما نحسب
+      // بصمتَه وما ندفعه معًا، فيصير نقطةً ثابتة يتّفق عليها الطرفان.
+      var clean = sanitizePayload({ overrides: overrides, patterns: patterns });
+      overrides = clean.overrides; patterns = clean.patterns;
+      var curHash = hashPayload(clean);
 
       var pre = tombsDirty ? pSetLocal(env, keyed(K.SYNC_TOMBS, tombs)) : Promise.resolve();
       return pre.then(function () {
@@ -794,9 +800,25 @@
           if (r[K.SYNC_PENDING]) return { done: "torn" };      // دفعةٌ معلّقة أصلًا ستصلحها
           // حارس الدوران: إصلاحٌ واحد كل SYNC_REPAIR_MIN_MS على الأكثر
           if (stT.repairAt && nowT - stT.repairAt < C.SYNC_REPAIR_MIN_MS) return { done: "torn" };
+          // ★★ تثبُّتٌ ثانٍ قبل الإصلاح: لقطةٌ تُقرأ أثناء كتابةِ جهازٍ آخر تبدو ممزّقةً
+          // وهي سليمةٌ بعد لحظات. وكان الإصلاح يدفع حالتَنا **بلا دمج** (remote=null
+          // فيُتخطّى فرعُ التبنّي) وبرقمٍ من state.rev فينزل عن رقم السحابة، فيمحو
+          // بالغياب ما دفعه الجهاز الآخر بنجاح — فيضيع التصحيح من الجهازين (قِيس).
+          // فالمرّة الأولى تُسجّل الشاهد وحده، والإصلاح لا يقع إلا إن بقي التمزّق.
+          if (!stT.tornAt || nowT - stT.tornAt < C.SYNC_TORN_CONFIRM_MS) {
+            var stW = {}, wk;
+            for (wk in stT) { if (own(stT, wk)) stW[wk] = stT[wk]; }
+            if (!stW.tornAt) stW.tornAt = nowT;
+            return pSetLocal(env, keyed(K.SYNC_STATE, stW)).then(function () { return { done: "torn" }; });
+          }
           var stCopy = {}, sk;
           for (sk in stT) { if (own(stT, sk)) stCopy[sk] = stT[sk]; }
           stCopy.repairAt = nowT;
+          stCopy.tornAt = 0; // استُهلك الشاهد
+          // رقمُ الدفعة المُصلِحة يعلو ميتا السحابة الحاضرة: أخذُه من state.rev وحده
+          // كان يُنزله عن رقمها فتُقرأ لقطتُنا أقدمَ مما هي
+          var metaRev = (snap[K.SYNC_META] && snap[K.SYNC_META].rev) || 0;
+          if (metaRev > (stCopy.rev || 0)) stCopy.rev = metaRev;
           var wR = {};
           wR[K.SYNC_PENDING] = nowT;
           wR[K.SYNC_STATE] = stCopy;

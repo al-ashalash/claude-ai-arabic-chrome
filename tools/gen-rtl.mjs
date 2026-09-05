@@ -109,12 +109,32 @@ if (ungated.length) {
   console.error(`! ${ungated.length} قاعدة بلا بوابة، أولها: ${ungated[0].sel.slice(0, 80)}. لن أكتب.`);
   process.exit(1);
 }
-// بوابة ٢: اللاعودة — قلب الناتج نفسه لا يولّد شيئًا
-const again = R.flipSheet(re.rules, {});
-if (again.stats.flipped !== 0) {
-  console.error(`! اللاعودة مكسورة: قلب الناتج ولّد ${again.stats.flipped} قلبًا. لن أكتب.`);
+// بوابة ٢: لا فيزيائيَّ في الناتج — الثابت الحقيقي لمحرّك الاتجاه.
+// ★ كانت «اللاعودة» تُعيد قلب الناتج وتتوقع صفرًا، وهو صفرٌ بنيويٌّ لا مُختبَر: كل
+// قاعدةٍ تحمل البوابة فيتخطاها المحلّل قبل التحليل أصلًا. والثابت الذي يعنينا حقًّا
+// أوضحُ منه: **مستوى المنطقيات لا يحمل خاصيةً فيزيائيةً اتجاهية قط**؛ والمصفِّرات لا
+// تحمل إلا unset؛ وfloat/clear احتياطٌ مقصود (لا مقابل منطقيَّ لهما مدعومًا).
+// (أما المعزَّزات فتُعيد بثَّ قواعد الموقع المشروطة بـRTL كما كتبها مؤلفها — وفيها
+// الفيزيائيُّ عن قصدٍ منه، فهي خارج هذا الفحص عمدًا.)
+const PHYS_RE = /^(?:margin|padding|border)-(?:left|right)(?:-|$)|^(?:left|right)$|^border-(?:top|bottom)-(?:left|right)-radius$|^inset-(?:left|right)$|^scroll-(?:margin|padding)-(?:left|right)$/;
+const leaks = [];
+for (const rule of (out.logical || []).concat(out.logicalImp || [])) {
+  for (const d of rule.decls || []) {
+    if (d.prop === "float" || d.prop === "clear") continue; // احتياطٌ مقصود
+    if (PHYS_RE.test(d.prop)) leaks.push(d.prop + ":" + String(d.value).slice(0, 30) + " ← " + rule.sel.slice(0, 70));
+  }
+}
+for (const rule of (out.neutral || []).concat(out.neutralImp || [])) {
+  for (const d of rule.decls || []) {
+    if (String(d.value).trim() !== "unset") leaks.push("مصفِّرٌ بقيمةٍ غير unset: " + d.prop + ":" + String(d.value).slice(0, 30));
+  }
+}
+if (leaks.length) {
+  console.error(`! فيزيائيٌّ تسرّب إلى الناتج (${leaks.length})، أوله:`);
+  for (const l of leaks.slice(0, 5)) console.error("   " + l);
   process.exit(1);
 }
+console.log(`  لا فيزيائيَّ في المنطقيات (${(out.logical || []).length + (out.logicalImp || []).length} قاعدة)، والمصفِّرات unset كلها`);
 
 // ---- 4) اكتب ----
 fs.writeFileSync(path.join(EXT, "rtl-overrides.css"), css, "utf8");
@@ -131,4 +151,4 @@ fs.writeFileSync(path.join(EXT, "rtl-coverage.js"), cov, "utf8");
 console.log(`\n✓ rtl-overrides.css: ${(css.length / 1024).toFixed(1)}KB (تصفير ${out.neutral.length} + منطقي/مطابق ${out.logical.length} + معزَّز ${out.dirBoost.length} + مهمّات ${impRules.length})`);
 console.log(`  نسخ مطابقة: ${st.identity} إعلانًا | حركات اتجاهية (تُبلَّغ لا تُقلب): ${parseStats.animatedPhysical}`);
 console.log(`✓ rtl-coverage.js: ${out.coverage.length} بصمة`);
-console.log("✓ البوابات الثلاث: إعادة التحليل، البوابة على كل قاعدة، اللاعودة");
+console.log("✓ البوابات الثلاث: إعادة التحليل، البوابة على كل قاعدة، لا فيزيائيَّ في الناتج");

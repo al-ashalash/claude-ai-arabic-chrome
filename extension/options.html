@@ -314,16 +314,20 @@
       <div id="rtlEngineBox">
         <label class="engopt">
           <input type="radio" name="rtlEngine" id="rtlEngineV2" value="v2" aria-describedby="rtlEngineV2Why">
-          <span><b>الجذري v2 (الافتراضي)</b>
-            <span class="why" id="rtlEngineV2Why">يقلب أصناف تنسيق الموقع كلها إلى خصائص منطقية فتنعكس الواجهة انعكاسًا شاملًا، مع بقاء الشيفرة والمقتطفات جزرًا LTR.</span></span>
+          <span><b>الجذري (الافتراضي) — يتجدّد مع الموقع</b>
+            <span class="why" id="rtlEngineV2Why">يقلب أصناف تنسيق الموقع كلها إلى خصائص منطقية فتنعكس الواجهة انعكاسًا شاملًا، مع بقاء الشيفرة والمقتطفات جزرًا LTR. وحين يُحدِّث الموقعُ تنسيقاته يُعيد بناء ورقة القلب من ملفاته الحاضرة تلقائيًّا، فلا تتقادم التغطية.</span></span>
         </label>
         <label class="engopt">
           <input type="radio" name="rtlEngine" id="rtlEngineV1" value="v1" aria-describedby="rtlEngineV1Why">
           <span><b>النقطي v1 (توافق)</b>
-            <span class="why" id="rtlEngineV1Why">يبقي الإصلاحات اليدوية القليلة وحدها — اختره فقط إن ساءت شاشة بعد تحديث للموقع.</span></span>
+            <span class="why" id="rtlEngineV1Why">يبقي الإصلاحات اليدوية القليلة وحدها — شبكةُ أمانٍ إن ساءت شاشةٌ بعد تحديث للموقع؛ وبالتجدّد التلقائي أعلاه لم يعد يُحتاج إليه غالبًا.</span></span>
         </label>
       </div>
       <div class="status" id="rtlEngineStatus" role="status" aria-live="polite"></div>
+      <p class="desc" id="rtlLiveInfo" style="margin-top:6px"></p>
+      <div class="btnrow">
+        <button id="rtlLiveRebuild" class="ghost">أعد بناء ورقة الاتجاه الآن</button>
+      </div>
 
       <h3 style="font-size:14px;margin:10px 0 4px;padding-top:12px;border-top:1px solid var(--line)">طبيب الاتجاه</h3>
       <p class="desc">

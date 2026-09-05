@@ -10,7 +10,7 @@
 // (الذي لا يشغّل عمال خدمة أصلًا). في الصفحة لا وجود لـimportScripts، ولا حاجة
 // إليها: مانيفست فايرفوكس يسرد cml-const وcml-arbiter وcml-sync قبل هذا الملف في
 // background.scripts بالترتيب نفسه، فالكائنات حاضرة قبل أن نصل هنا.
-if (typeof importScripts === "function") importScripts("cml-const.js", "cml-shared.js", "cml-arbiter.js", "cml-sync.js");
+if (typeof importScripts === "function") importScripts("cml-const.js", "cml-shared.js", "cml-rtl.js", "cml-arbiter.js", "cml-sync.js");
 
 var arbiter = CMLArbiter.createArbiter();
 
@@ -19,8 +19,47 @@ chrome.runtime.onConnect.addListener(function (port) {
 });
 
 // استعلام الحالة (صفحة الإعدادات قبل بدء فحص): ردٌّ متزامن — لا true فلا قناة تُترك معلقة
+// ★ المحرّك الحيّ: المحتوى يرسل عناوين أوراق الموقع وبصمتَها، والعامل يردّ بورقة القلب
+// — من الذاكرة إن طابقت البصمة، وإلا جلبًا وبناءً وتخزينًا. العملُ هنا لا في الصفحة:
+// البناء ~360 مث، ووقوعُه في خيط الصفحة يظهر تلعثمًا عند كل تحديثٍ للموقع.
+// (الأصول تُخدَم بـaccess-control-allow-origin: * فيجلبها العامل بلا صلاحية مضيف.)
+var liveBuilding = null; // طلبٌ واحدٌ في الطيران: تبويباتٌ عدّة تنتظر النتيجة نفسها
+function buildLive(urls, fp, cb) {
+  var K = CMLConst.K;
+  chrome.storage.local.get([K.RTL_LIVE], function (r) {
+    void chrome.runtime.lastError;
+    var have = r && r[K.RTL_LIVE];
+    if (have && have.fp === fp && have.css) { cb({ css: have.css, cached: true }); return; }
+    if (liveBuilding && liveBuilding.fp === fp) { liveBuilding.waiting.push(cb); return; }
+    liveBuilding = { fp: fp, waiting: [cb] };
+    var list = urls.slice(0, CMLConst.RTL_LIVE_SHEETS_MAX);
+    Promise.all(list.map(function (u) {
+      return fetch(u).then(function (res) { return res.ok ? res.text() : null; }).catch(function () { return null; });
+    })).then(function (texts) {
+      var ok = texts.filter(function (t) { return typeof t === "string" && t.length; });
+      var built = ok.length ? CMLRtl.buildLiveSheet(ok) : null;
+      var done = function (payload) {
+        var w = liveBuilding ? liveBuilding.waiting : [];
+        liveBuilding = null;
+        for (var i = 0; i < w.length; i++) { try { w[i](payload); } catch (e) {} }
+      };
+      // بناءٌ أخفق (أوراق لم تُجلب، أو بوابتا الصحّة رفضتا) ⇒ لا نكتب شيئًا،
+      // فتبقى ورقةُ اللقطة عاملةً — الإخفاق لا يُنقص المستخدم شيئًا
+      if (!built || built.css.length > CMLConst.RTL_LIVE_MAX_BYTES) { done(null); return; }
+      var rec = { fp: fp, css: built.css, at: Date.now(), sources: ok.length,
+                  bytes: built.css.length, flipped: built.stats.flipped, rules: built.rules };
+      var w2 = {}; w2[K.RTL_LIVE] = rec;
+      chrome.storage.local.set(w2, function () { void chrome.runtime.lastError; done({ css: rec.css, cached: false }); });
+    });
+  });
+}
+
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
-  if (msg && msg.type === "status") sendResponse(arbiter.status());
+  if (msg && msg.type === "status") { sendResponse(arbiter.status()); return false; }
+  if (msg && msg.type === "rtlcss" && Array.isArray(msg.urls) && msg.fp) {
+    buildLive(msg.urls, msg.fp, function (payload) { try { sendResponse(payload); } catch (e) {} });
+    return true; // ردٌّ غير متزامن
+  }
   return false;
 });
 

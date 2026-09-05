@@ -27,6 +27,8 @@
       RTL_ENGINE: "cml_rtl_engine",       // "v2" (جذري، الافتراضي) أو "v1" (نقطي للتوافق)
       RTLDOC_REQUEST: "cml_rtldoc_request", // طلب طبيب الاتجاه (عابر — SESS)
       RTLDOC_RESULT: "cml_rtldoc_result",   // نتيجته (دائمة — local، كنتيجة الفحص)
+      // المحرّك الحيّ: ورقةُ قلبٍ مبنيّةٌ من CSS الموقع الحاضر، مفتاحُها بصمةُ عناوينه
+      RTL_LIVE: "cml_rtl_live",           // {fp, css, at, sources, bytes, flipped}
       // ---- المزامنة الاختيارية (المرحلة ٦) — العقد كاملًا في رأس cml-sync.js ----
       SYNC_ENABLED: "cml_sync_enabled",   // local: علم الموافقة — غيابه أو false = معطّلة
       SYNC_TOMBS: "cml_sync_tombs",       // local: شواهد الحذف {"<لغة>|<مفتاح>": وقتُ الحذف}
@@ -50,7 +52,7 @@
       "cml_enabled", "cml_rtl", "cml_chatrtl", "cml_overrides", "cml_user_patterns",
       "cml_scan_request", "cml_scan_result", "cml_scan_cancel", "cml_scan_claim",
       "cml_recon_dismissed", "cml_bad_rules",
-      "cml_rtl_engine", "cml_rtldoc_request", "cml_rtldoc_result",
+      "cml_rtl_engine", "cml_rtldoc_request", "cml_rtldoc_result", "cml_rtl_live",
       "cml_sync_enabled", "cml_sync_tombs", "cml_sync_lasthash",
       "cml_sync_device", "cml_sync_state", "cml_sync_pending", "cml_sync_dirty",
     ],
@@ -68,6 +70,9 @@
     CLAIM_STALE_MS: 90000,  // حجز أقدم من هذا متروك (يطابقه startScan وclaimScan حكمًا)
     SCAN_CAP: 4000,         // أقصى ما يُخزَّن من غير المترجَم (القائمتان تُقصان، العدّ يصدق)
     RTLDOC_CAP: 500,        // أقصى ما يُخزَّن من إعلانات فيزيائية غير مغطاة (العدّ يصدق)
+    // سقفُ ورقة المحرّك الحيّ المخزَّنة (الحاليّ ~400ك.ب؛ ما تجاوز هذا لقطةٌ شاذّة لا تُخزَّن)
+    RTL_LIVE_MAX_BYTES: 2 * 1024 * 1024,
+    RTL_LIVE_SHEETS_MAX: 12, // أقصى عدد أوراق تُجلب في الجولة الواحدة
     SCAN_PARALLEL: 6,       // توازي الجلب — لا يزاحم بث المحادثة على الاتصال نفسه
     HEARTBEAT_STALL_MS: 45000, // نبض أقدم من هذا في «جارٍ» = فحص متعثر
 

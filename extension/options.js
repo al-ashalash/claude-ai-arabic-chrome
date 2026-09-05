@@ -796,6 +796,24 @@
   // والطبيب يقتسم حجز cml_scan_claim مع فحص الترجمة فلا يجريان معًا ولا طبيبان متوازيان.
   var rtlDocTimer = null, rtlDocWaited = 0;
 
+  // حال المحرّك الحيّ: متى بُنيت الورقة، ومن كم ورقةً، وكم موضعًا قُلب — وزرُّ إعادة بناءٍ
+  // يدوي (المسار التلقائي يكفي، لكن رؤية الحال تطمئن ومَن أراد التعجيل فله ذلك)
+  function renderRtlLive() {
+    var box = $("rtlLiveInfo");
+    if (!box) return;
+    get([CMLConst.K.RTL_LIVE], function (s) {
+      var r = s[CMLConst.K.RTL_LIVE];
+      if (!r || !r.css) {
+        box.textContent = "ورقة الاتجاه الحيّة لم تُبنَ بعد — تُبنى تلقائيًّا عند أول فتحٍ لـclaude.ai، وحتى ذلك الحين تعمل الورقة المضمّنة.";
+        return;
+      }
+      var d = new Date(r.at || 0);
+      box.textContent = "الورقة الحيّة: " + (r.flipped || 0) + " موضعًا مقلوبًا من " +
+        (r.sources || 0) + " ورقة تنسيقٍ للموقع (" + Math.round((r.bytes || 0) / 1024) + " ك.ب) — بُنيت " +
+        d.toLocaleDateString("ar") + " " + d.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }) + ".";
+    });
+  }
+
   function renderRtlDoc(r) {
     var cnt = $("rtlDocCount"), st = $("rtlDocStatus"), box = $("rtlDocBox");
     if (!cnt || !st) return; // صفحة اختبار بلا قسم الاتجاه
@@ -1206,6 +1224,16 @@
     });
     get(["cml_scan_result"], function (s) { renderScan(s.cml_scan_result); });
     get([CMLConst.K.RTLDOC_RESULT], function (s) { renderRtlDoc(s[CMLConst.K.RTLDOC_RESULT]); });
+    renderRtlLive();
+    if ($("rtlLiveRebuild")) $("rtlLiveRebuild").addEventListener("click", function () {
+      // محوُ الورقة المخزَّنة يكفي: أولُ تبويب claude.ai يُعيد بناءها من ملفات الموقع الحاضرة
+      var w = {}; w[CMLConst.K.RTL_LIVE] = null;
+      chrome.storage.local.remove(CMLConst.K.RTL_LIVE, function () {
+        void chrome.runtime.lastError;
+        renderRtlLive();
+        flash($("rtlEngineStatus"), "مُحيت الورقة الحيّة — تُبنى من جديد عند أول فتحٍ أو تحديثٍ لتبويب claude.ai.");
+      });
+    });
     loadRtlEngine();
     renderRecon();   // مراجعة ما بعد التحديث: تظهر وحدها متى كان ثمة ما يُراجَع
     renderSync();    // قسم المزامنة الاختيارية: حالته من cml_sync_enabled/cml_sync_state
@@ -1300,6 +1328,7 @@
         if (ch.cml_overrides) renderOrDefer("termsList", renderTerms);
         if (ch.cml_scan_result) renderScan(ch.cml_scan_result.newValue);
         if (ch[CMLConst.K.RTLDOC_RESULT]) renderRtlDoc(ch[CMLConst.K.RTLDOC_RESULT].newValue);
+        if (ch[CMLConst.K.RTL_LIVE]) renderRtlLive();
         // بدّلته نافذة منبثقة أو «إعادة الضبط» ⇒ ينعكس اختيار المحرّك هنا فورًا
         if (ch[CMLConst.K.RTL_ENGINE]) loadRtlEngine();
         // المزامنة: علمُ التفعيل أو حالُ الدفعة كتبهما العامل (أو «إعادة الضبط») ⇒ عرض حيّ

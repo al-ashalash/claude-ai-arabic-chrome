@@ -87,7 +87,53 @@
   function restoreAttr(html, name, val) {
     if (val === null) html.removeAttribute(name); else html.setAttribute(name, val);
   }
+  // ★ المحرّك الحيّ: أوراقُ الموقع الحاضرة تُقلب وقتَ التشغيل بدل لقطةٍ مبنيّةٍ وقت
+  // الإصدار. بصمةُ العناوين هي المفتاح: ما دامت هي هي فالورقة من الذاكرة بلا شبكة،
+  // وأولُ تغيّرٍ في حزم الموقع يُعيد البناء تلقائيًّا — فلا تتقادم التغطية أبدًا.
+  var liveAsked = null;
+  var LIVE_HOSTS = /(^|\.)claude\.ai$|(^|\.)anthropic\.com$/;
+  function liveSheetUrls() {
+    var out = [], seen = {};
+    var links = document.querySelectorAll('link[rel="stylesheet"][href]');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].href;
+      if (!/^https?:/.test(href)) continue;
+      var host;
+      try { host = new URL(href).hostname; } catch (e) { continue; }
+      if (!LIVE_HOSTS.test(host) && host !== location.hostname) continue; // نطاقُنا المصرَّح به وحده
+      if (!seen[href]) { seen[href] = 1; out.push(href); }
+    }
+    return out.sort();
+  }
+  function applyLiveSheet() {
+    if (!state.enabled || !state.rtl || state.rtlEngine !== "v2") return;
+    if (!chrome.runtime || !chrome.runtime.sendMessage) return;
+    var urls = liveSheetUrls();
+    if (!urls.length) return;
+    var fp = CMLRtl && CMLRtl.fnv1a ? CMLRtl.fnv1a(urls.join("|")) : urls.join("|");
+    if (liveAsked === fp) return; // سُئل عنها في هذه الحياة
+    liveAsked = fp;
+    try {
+      chrome.runtime.sendMessage({ type: "rtlcss", urls: urls, fp: fp }, function (res) {
+        void chrome.runtime.lastError;
+        if (!res || !res.css) return; // إخفاق ⇒ تبقى ورقةُ اللقطة (بوابة v2) عاملة
+        var el = document.getElementById("cml-live-rtl");
+        if (!el) {
+          el = document.createElement("style");
+          el.id = "cml-live-rtl";
+          (document.head || document.documentElement).appendChild(el);
+        }
+        if (el.textContent !== res.css) el.textContent = res.css;
+        // تبديل البوابة **بعد** الحقن: لحظةٌ واحدة بلا ورقةٍ عاملة لا تقع
+        if (state.enabled && state.rtl && state.rtlEngine === "v2") {
+          document.documentElement.setAttribute("data-cml-rtl", "live");
+        }
+      });
+    } catch (e) {}
+  }
+
   function applyChrome() {
+    setTimeout(applyLiveSheet, 0); // بعد ضبط السمات، وخارج المسار الحرج
     var html = document.documentElement;
     if (!html) return;
     saveOriginals(html);
@@ -98,8 +144,12 @@
         html.setAttribute("dir", active.dir);
         html.setAttribute("lang", state.lang);
         // بوابة محرّك v2: rtl-overrides.css كله خلف هذه السمة — بلاها خاملٌ حرفيًّا
-        if (active.dir === "rtl" && state.rtlEngine !== "v1") html.setAttribute("data-cml-rtl", "v2");
-        else html.removeAttribute("data-cml-rtl");
+        if (active.dir === "rtl" && state.rtlEngine !== "v1") {
+          // ورقةٌ حيّةٌ محقونةٌ بالفعل ⇒ أبقِ بوابتها: إعادتُها إلى "v2" تُخمد الحيّة
+          // وتوقظ اللقطة المتقادمة — وهذا عينُ ما نعالجه
+          var liveOn = !!document.getElementById("cml-live-rtl");
+          html.setAttribute("data-cml-rtl", liveOn ? "live" : "v2");
+        } else html.removeAttribute("data-cml-rtl");
       } else {
         restoreAttr(html, "dir", origDir);
         restoreAttr(html, "lang", origLang);

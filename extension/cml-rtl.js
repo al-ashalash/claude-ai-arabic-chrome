@@ -965,7 +965,43 @@
   // توقيع الحالة موزَّعٌ على أصنافٍ عدة (absolute + origin-* + انتقال transform)
   // فلا يُلتقط من قاعدة CSS واحدة.
 
+  /* ★ المحرّك الحيّ (buildLiveSheet): يبني ورقة القلب من **نصوص CSS الموقع كما هي الآن**
+   * لا من لقطةٍ مبنيّةٍ وقت الإصدار. العلّة الجذرية التي يعالجها: الموقع يشحن حزمًا جديدة
+   * (أسماء ملفاتٍ ببصماتٍ جديدة وأصنافٍ مستجدّة)، فتصير لقطتُنا متقادمةً وتتساقط تغطيتُنا
+   * تدريجيًّا حتى يفقد المستخدم الاتجاه ولا يملك إلا التبديل اليدوي إلى المحرّك النقطي.
+   * البوابة هنا "live" لا "v2": فما إن تُطبَّق الورقةُ الحيّة حتى تخمد ورقةُ اللقطة
+   * حرفيًّا (بوابتها v2) — فلا تتزاحمان أبدًا، وإخفاقُ الحيّ يُبقي اللقطة عاملة.
+   * والترتيب هنا هو ترتيب gen-rtl نفسه: جزرٌ، فمهمّات، فمصفِّرات، فمنطقيات، فمعزَّزات. */
+  var LIVE_GATE = 'html[data-cml-rtl="live"]';
+  function buildLiveSheet(texts) {
+    var all = [], layerOrder = [], parseErrors = 0;
+    for (var i = 0; i < texts.length; i++) {
+      var p = parseCss(texts[i]);
+      parseErrors += p.stats.parseErrors;
+      for (var L = 0; L < p.layerOrder.length; L++) {
+        if (layerOrder.indexOf(p.layerOrder[L]) === -1) layerOrder.push(p.layerOrder[L]);
+      }
+      for (var r = 0; r < p.rules.length; r++) { p.rules[r].idx = all.length; all.push(p.rules[r]); }
+    }
+    // بوابتا صحّةٍ كبوابتَي المولّد: مدخلٌ هزيلٌ أو أخطاءُ تحليلٍ كثيرة ⇒ لا ورقة
+    // (فتبقى اللقطة عاملةً بدل ورقةٍ ناقصةٍ تُفسد الصفحة)
+    if (parseErrors > 50) return null;
+    var out = flipSheet(all, { layerOrder: layerOrder });
+    if (all.length < 1000 || out.stats.flipped < 200) return null;
+    var impRules = out.neutralImp.concat(out.logicalImp, out.dirBoostImp);
+    var css = "@layer cml-point, cml-imp;\n" + ISLANDS_CSS +
+      (impRules.length ? "@layer cml-imp{\n" + serializeRules(impRules) + "\n}\n" : "") +
+      serializeRules(out.neutral) + "\n" + serializeRules(out.logical) + "\n" +
+      serializeRules(out.dirBoost) + "\n";
+    // تبديل البوابة على الناتج كاملًا (الجزر تحمل البوابة نفسها) — تبديلٌ نصّي على سلسلةٍ
+    // ثابتةٍ نحن كتبناها، فلا يطال محتوى قاعدةٍ من الموقع
+    css = css.split(GATE).join(LIVE_GATE);
+    return { css: css, stats: out.stats, rules: all.length };
+  }
+
   g.CMLRtl = {
+    LIVE_GATE: LIVE_GATE,
+    buildLiveSheet: buildLiveSheet,
     GATE: GATE,
     parseCss: parseCss,
     analyzeDecl: analyzeDecl,

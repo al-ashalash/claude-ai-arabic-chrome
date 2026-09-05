@@ -253,6 +253,20 @@ fetch("../extension/rtl-overrides.css")
 }
 
 function finish() {
+  // ===== المحرّك الحيّ: يبني من CSS الحاضر لا من لقطةٍ متقادمة =====
+  var liveIn = ["@layer theme,base,utilities;" + Array.from({length:1200},function(_,i){
+    return ".u"+i+"{margin-left:"+i+"px;padding-right:2px;left:0}";}).join("")];
+  var liveOut = CMLRtl.buildLiveSheet(liveIn);
+  check("★ الحيّ يبني ورقةً من نصوص CSS مباشرةً", "true", String(!!(liveOut && liveOut.css)));
+  check("★ بوابتُه live لا v2 (فلا تتزاحم الورقتان)", "true",
+    String(!!liveOut && liveOut.css.indexOf("data-cml-rtl=\"live\"") !== -1 &&
+           liveOut.css.indexOf("data-cml-rtl=\"v2\"") === -1));
+  check("★ ناتجُه يُعاد تحليله بلا أخطاء", "0", String(CMLRtl.parseCss(liveOut.css).stats.parseErrors));
+  var liveRe = CMLRtl.parseCss(liveOut.css);
+  check("★ كل قاعدةٍ فيه خلف بوابته", "0",
+    String(liveRe.rules.filter(function (r) { return r.sel.indexOf(CMLRtl.LIVE_GATE) !== 0; }).length));
+  check("★ مدخلٌ هزيل يُرفض (تبقى اللقطة عاملة)", "true",
+    String(CMLRtl.buildLiveSheet([".a{margin-left:1px}"]) === null));
   document.title = "rtltest " + pass + "/" + total;
   var h = document.createElement("p");
   h.className = pass === total ? "ok" : "bad";

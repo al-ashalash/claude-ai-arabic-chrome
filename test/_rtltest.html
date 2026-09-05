@@ -56,6 +56,8 @@ function check(name, expect, got) {
 }
 
 var R = window.CMLRtl, GATE = 'html[data-cml-rtl="v2"]';
+var NOFLIP_EX = ':not(:where([data-cml-noflip="computed"]))';
+function bare(s) { return s.split(NOFLIP_EX).join(""); }
 check("CMLRtl محمّل وبوابته صحيحة", GATE, R && R.GATE);
 
 // ===== الطبقة ١/أ: المحلّل =====
@@ -117,8 +119,9 @@ var FS = R.flipSheet(FR, { layerOrder: ["components", "utilities"] });
 check("المصفِّرات كلها في قسم neutral", "margin-left:unset,margin-right:unset",
   FS.neutral.map(function (r) { return r.decls.map(function (d) { return d.prop + ":" + d.value; }).join(";"); }).join(","));
 // العقد الجديد (سلّم التخصيص): المحدِّد الأصلي ملفوف في :where() خلف بادئة المستوى ٣
+// قواعدُ المراسي تحمل استثناء السطح المحسوب — يُجرَّد قبل المقارنة فالمقصود هنا الترتيب
 check("المنطقيات مرتَّبة برتبة الطبقة (.b بعد .a)", GATE + ":not(#cml0#cml1#cml2) :where(.a) | " + GATE + ":not(#cml0#cml1#cml2) :where(.b)",
-  FS.logical.map(function (r) { return r.sel; }).join(" | "));
+  FS.logical.map(function (r) { return bare(r.sel); }).join(" | "));
 // رتبة الطبقة تغلب موضع القاعدة: نعكس idx ونبقي الطبقات — يجب أن تبقى .a أولًا
 var FS2 = R.flipSheet([
   { sel: ".b", decls: [{ prop: "margin-right", value: "16px", important: false }], ctx: [], layer: "utilities", idx: 0 },
@@ -138,8 +141,8 @@ var PS = R.flipSheet([
   { sel: ".hover\\:after\\:x:hover:after", decls: [{ prop: "margin-left", value: "2px", important: false }], ctx: [], layer: null, idx: 1 },
 ]);
 check("الزائف خارج :where والمهرَّب داخله", "true",
-  PS.logical[0].sel.indexOf(":where(.p):before") !== -1 &&
-  PS.logical[1].sel.indexOf(":where(.hover\\:after\\:x:hover):after") !== -1);
+  bare(PS.logical[0].sel).indexOf(":where(.p):before") !== -1 &&
+  bare(PS.logical[1].sel).indexOf(":where(.hover\\:after\\:x:hover):after") !== -1);
 
 // ===== الطبقة ١/ج٢: dirBoost — قواعد المؤلف المشروطة بـRTL تفوز =====
 var DB = R.flipSheet([
@@ -267,6 +270,13 @@ function finish() {
     String(liveRe.rules.filter(function (r) { return r.sel.indexOf(CMLRtl.LIVE_GATE) !== 0; }).length));
   check("★ مدخلٌ هزيل يُرفض (تبقى اللقطة عاملة)", "true",
     String(CMLRtl.buildLiveSheet([".a{margin-left:1px}"]) === null));
+  // ★★ (شُخّص حيًّا) السطح المحسوب لا يُفرض عليه اتجاه: خلطُه بجزيرة القراءة كان
+  // يقلب القوائم المنبثقة كلها إلى اليسار — فالسمة "computed" مراسٍ فقط لا اتجاه
+  check("★★ جزيرة القراءة وحدها تُلزَم direction:ltr", "true",
+    String(/[data-cml-noflip="ltr"]/.test(CMLRtl.ISLANDS_CSS)));
+  check("★★ والسطح المحسوب (computed) لا يُفرض عليه اتجاه", "true",
+    String(CMLRtl.ISLANDS_CSS.indexOf("[data-cml-noflip]{") === -1 &&
+           CMLRtl.ISLANDS_CSS.indexOf("computed") === -1));
   document.title = "rtltest " + pass + "/" + total;
   var h = document.createElement("p");
   h.className = pass === total ? "ok" : "bad";

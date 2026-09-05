@@ -633,7 +633,23 @@
    * فكلُّ منطقيٍّ يغلب كلَّ مصفِّر بنيويًّا، والترتيب داخل المستوى الواحد (رتبة
    * الطبقة ثم الموضع) يُطابق تعاقب الموقع مطابقةً تامة — وبهذا يُستعاد قانون
    * الطبقات نفسُه الذي كان الفرزُ وحده عاجزًا عن استعادته لما اختلف التخصيص. */
-  function prefixTier(sel, tier) {
+  /* ★★ استثناءُ السطح المحسوب من قواعد **المراسي** وحدها: عنصرٌ مطلقٌ يحسب الموقعُ
+   * إزاحتَه بجافاسكربت (قائمةٌ منبثقة، مؤشرٌ منزلق) لا يُقلب مرساه — أما اتجاهُ نصّه
+   * فيتبع الصفحة. وكان الاستثناء يُنفَّذ بفرض direction:ltr عليه، فانقلبت قوائمُ
+   * منبثقةٌ كاملةٌ إلى اليسار (شُخّص حيًّا). و:not(:where(…)) صفرُ تخصيصٍ فلا يزحزح السلّم. */
+  var NOFLIP_EXEMPT = ':not(:where([data-cml-noflip="computed"]))';
+  // خصائصُ المرساة وحدها تحمل الاستثناء — وإلحاقُه بكل قاعدةٍ يضخّم الورقة بلا فائدة
+  var ANCHOR_PROPS = {
+    "left": 1, "right": 1, "inset-inline-start": 1, "inset-inline-end": 1, "inset-inline": 1,
+    "inset": 1, "transform": 1, "translate": 1, "--tw-translate-x": 1,
+    "margin-inline-start": 1, "margin-inline-end": 1, "margin-left": 1, "margin-right": 1,
+  };
+  function anchorish(decls) {
+    for (var i = 0; i < decls.length; i++) if (ANCHOR_PROPS[decls[i].prop]) return true;
+    return false;
+  }
+
+  function prefixTier(sel, tier, exempt) {
     var ids = "";
     for (var k = 0; k < tier; k++) ids += "#cml" + k;
     var head = GATE + ":not(" + ids + ")";
@@ -658,17 +674,17 @@
         var tail = rest.slice(cm.length).trim();
         var comb = "";
         if (/^[>+~]/.test(tail)) { comb = tail.charAt(0) + " "; tail = tail.slice(1).trim(); }
-        out.push(head + (cm ? ":where(" + cm + ")" : "") + (tail ? " " + comb + ":where(" + tail + ")" : "") + pseudo);
+        out.push(head + (cm ? ":where(" + cm + ")" : "") + (tail ? " " + comb + ":where(" + tail + ")" : "") + (exempt || "") + pseudo);
       } else if (/^[>+~]/.test(core)) {
-        out.push(head + " " + s); // بقايا تداخل نادرة — بلا لفّ (تخصيصها يبقى كما هو)
+        out.push(head + " " + s + (exempt || "")); // بقايا تداخل نادرة — بلا لفّ (تخصيصها يبقى كما هو)
       } else if (!core.trim()) {
-        out.push(head + " *" + pseudo); // زائفٌ عارٍ (::selection مثلًا)
+        out.push(head + " *" + (exempt || "") + pseudo); // زائفٌ عارٍ (::selection مثلًا)
       } else if (pseudo && /[\s>+~]$/.test(core)) {
         // الزائف لسليلٍ ضمني (".a ::before") — العنصر الكوني يحفظ الدلالة بعد اللف
         var tc = /[>+~]\s*$/.exec(core);
-        out.push(head + " :where(" + core.replace(/[\s>+~]+$/, "") + ") " + (tc ? tc[0].trim() + " " : "") + "*" + pseudo);
+        out.push(head + " :where(" + core.replace(/[\s>+~]+$/, "") + ") " + (tc ? tc[0].trim() + " " : "") + "*" + (exempt || "") + pseudo);
       } else {
-        out.push(head + " :where(" + core.trim() + ")" + pseudo);
+        out.push(head + " :where(" + core.trim() + ")" + (exempt || "") + pseudo);
       }
     }
     return out.join(",");
@@ -910,8 +926,10 @@
       // فرز المهمّات: !important داخل طبقات الموقع يقلب قانون الطبقات (المهمّ المبكر
       // يغلب المتأخر) فيهزم مهمّاتُ الموقع المطبَّقةُ مهمّاتِنا غيرَ المطبَّقة — لذا
       // تُفصل الإعلانات الحاملة له لتُبثّ داخل ‎@layer cml-imp‎ المعلَنة أولَ الورقة.
-      pushSplit(neutral, neutralImp, prefixTier(rule.sel, 2), neut, rule.ctx);
-      pushSplit(logical, logicalImp, prefixTier(rule.sel, 3), flips, rule.ctx);
+      var exN = anchorish(neut) ? NOFLIP_EXEMPT : "";
+      var exF = anchorish(flips) ? NOFLIP_EXEMPT : "";
+      pushSplit(neutral, neutralImp, prefixTier(rule.sel, 2, exN), neut, rule.ctx);
+      pushSplit(logical, logicalImp, prefixTier(rule.sel, 3, exF), flips, rule.ctx);
       stats.neutralized += neut.length;
     }
     return {
@@ -954,16 +972,19 @@
 
   // جزر LTR: داخلها تبقى الخصائص المنطقية على يسارها لأن direction:ltr يحسمها،
   // وdir=auto في المحادثة يحسم كل فقرة بلغتها — الصواب انبثاقي لا حالات خاصة.
+  /* ★★ عقدان كانا مخلوطين في سمةٍ واحدة، وخلطُهما أعطبَ واجهاتٍ كاملة:
+   *   ١) «جزيرةُ قراءة»: نصٌّ يُقرأ من اليسار مهما كان اتجاه الصفحة — الشيفرة والمقتطفات.
+   *   ٢) «سطحٌ محسوب»: عنصرٌ مطلقٌ يحسب الموقعُ إزاحتَه بجافاسكربت (قائمةٌ منبثقة، مؤشرٌ
+   *      منزلق) — فلا نقلب مرساتَه الفيزيائية كي لا نخالف حسابَه.
+   * وكان [data-cml-noflip] يجرّ الاثنين معًا فيفرض direction:ltr على السطح المحسوب —
+   * فتنقلب **قائمةُ الحساب المنبثقة كلها إلى اليسار** (شُخّص حيًّا على شاشة المالك:
+   * السمة عندنا نحن، والقائمة داخلها). والصواب أن السطح المحسوب يبقى على اتجاه الصفحة
+   * وإنما يُستثنى من قلب المراسي وحده. فصار للقراءة قيمةٌ صريحة "ltr"، وللسطح "computed"
+   * ولا اتجاه له. (ولذا اختفى العطل في المحرّك النقطي: هذه الورقة خلف بوابة v2.) */
   var ISLANDS_CSS =
     GATE + " pre," + GATE + " code," + GATE + " kbd," + GATE + " samp," +
-    GATE + " [data-cml-noflip]{direction:ltr;}\n" +
+    GATE + ' [data-cml-noflip="ltr"],' + GATE + " [data-cml-noflip=\"\"]{direction:ltr;}\n" +
     GATE + " pre," + GATE + " code{text-align:start;unicode-bidi:isolate;}\n";
-  // ملحوظة على الجزيرة أعلاه: [data-cml-noflip] تخدم أيضًا **المواضع المحسوبة** —
-  // عنصرٌ مطلقٌ يحرّكه الموقع بـtransform (مؤشر شرائح منزلق مثلًا) مرساتُه الفيزيائية
-  // جزءٌ من عقد حسابه، وdirection:ltr عليه يُرجع inset-inline-start إلى معنى left
-  // فتصحّ إزاحتُه بلا أن نمسّ نمطَه السطري. والمحرّك يضع السمة وقت التشغيل لأن
-  // توقيع الحالة موزَّعٌ على أصنافٍ عدة (absolute + origin-* + انتقال transform)
-  // فلا يُلتقط من قاعدة CSS واحدة.
 
   /* ★ المحرّك الحيّ (buildLiveSheet): يبني ورقة القلب من **نصوص CSS الموقع كما هي الآن**
    * لا من لقطةٍ مبنيّةٍ وقت الإصدار. العلّة الجذرية التي يعالجها: الموقع يشحن حزمًا جديدة

@@ -1222,6 +1222,7 @@
       var tp = cs.transitionProperty || "";
       var wc = cs.willChange || "";
       if (tp.indexOf("transform") === -1 && tp.indexOf("all") === -1 && wc.indexOf("transform") === -1) continue;
+      // "computed" = استثناءُ المراسي وحده؛ ولا يُفرض عليه اتجاه (انظر ISLANDS_CSS)
       el.setAttribute("data-cml-noflip", "computed");
     }
   }

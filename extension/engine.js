@@ -1257,7 +1257,7 @@
   }
 
   function start() {
-    compile(); applyChrome();
+    compile();
     // معاودةُ المحرّك الحيّ بعد وجود الأوراق فعلًا (الحارس liveAsked يمنع التكرار)
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", applyLiveSheet, { once: true });
     window.addEventListener("load", applyLiveSheet, { once: true });
@@ -1334,9 +1334,20 @@
 
   // immediate default (reduce RTL flash), then refine from storage
   // ★ كتابةٌ متفائلة بالافتراضات **قبل** قراءة الإعدادات — مقايضةٌ مقصودة لا سهو:
-  // بلا صلاحيةٍ لقراءةٍ متزامنة في MV3، إمّا ومضةُ LTR ثم انقلابٌ لكل مَن فعّل الإضافة
-  // (وهم عامّة مستخدميها)، وإمّا ومضةُ RTL ثم ارتدادٌ لمن أطفأها. اخترنا الثانية لأنها
-  // تصيب الأقلّ، والارتدادُ يقع في الإطار نفسِه غالبًا. ولا يُكتب إلا ما يمنع الومضة.
-  compile(); applyChrome();
-  loadSettings(start);
+  // ★ نافذةُ الإقلاع بدل المقايضة: كنّا نكتب السمات بالافتراضات قبل قراءة الإعدادات،
+  // فيرى من أطفأ الإضافة ومضةَ انقلابٍ ثم ارتدادًا في كل تحميل. والآن لا نكتب شيئًا
+  // قبل الجواب، ونُخفي الصفحة في هذه الأجزاء من الثانية بسمةٍ نرفعها بعده — فلا ومضةَ
+  // لأحد. (الإخفاء في base.css معلَّقٌ بهذه السمة نفسِها، فلا يقع بلا جافاسكربت عامل.)
+  var bootEl = document.documentElement;
+  var bootDone = false;
+  function endBoot() {
+    if (bootDone) return;
+    bootDone = true;
+    try { bootEl.removeAttribute("data-cml-boot"); } catch (e) {}
+  }
+  try { bootEl.setAttribute("data-cml-boot", "1"); } catch (e) {}
+  // احتياطٌ لا يسقط: مهما أخفقت القراءة أو تأخّرت لا تبقى الصفحة مخفيّة
+  setTimeout(endBoot, 400);
+  compile();
+  loadSettings(function () { applyChrome(); endBoot(); start(); });
 })();

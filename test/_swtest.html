@@ -212,6 +212,25 @@ function lastReply(p) { return p.replies[p.replies.length - 1] || {}; }
   p91.client.postMessage({ type: "release" });
   p92.client.postMessage({ type: "claim", kind: "scan" });
   check("٩) وتحريره يحرّر فيُمنح الثاني", "grant", lastReply(p92).type);
+  // ★★ (مؤجَّلٌ عولج) طبقتا الحجز مرآةٌ واحدة: زاحفٌ حيٌّ بالطبقة القديمة يمنع المنحة
+  var legacyOn = true, mirrored = null;
+  var arbL = A.createArbiter(null, {
+    legacyBusy: function () { return legacyOn; },
+    onGrant: function (kind, at) { mirrored = { kind: kind, at: at }; },
+    onRelease: function () { mirrored = null; },
+  });
+  var pL = makePortPair();
+  arbL.attach(pL.server);
+  pL.client.postMessage({ type: "claim", kind: "scan" });
+  check("★★ زاحفٌ حيٌّ بالطبقة القديمة يمنع منحةً جديدة", "deny", lastReply(pL).type);
+  check("★★ وstatus يصدق فيقول مشغول", "true", String(arbL.status().busy === true));
+  legacyOn = false;
+  pL.client.postMessage({ type: "claim", kind: "scan" });
+  check("وبزوالها تُمنح ويُكتب في الطبقة القديمة", "grant/scan",
+    lastReply(pL).type + "/" + (mirrored ? mirrored.kind : "لا شيء"));
+  pL.client.postMessage({ type: "release" });
+  check("والتحرير يمحو المرآة", "true", String(mirrored === null));
+
 })();
 
 // ================= الطبقة ب: المحرّك كاملًا عبر قشرة chrome =================

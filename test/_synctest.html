@@ -437,6 +437,26 @@ async function main() {
         mEvil ? mEvil.patterns.length + "/" + (mEvil.patterns[0] ? mEvil.patterns[0].en : "") : "null");
   check("★★ والتعبير الكارثيّ لم يصل بحال", "true", String(!mEvil || !mEvil.patterns.some(function (p) { return /(a+)+/.test(p.re); })));
 
+  // ★★ (مؤجَّلٌ عولج) لا تضخّمَ كتابة: تعديلُ مفتاحٍ واحد في حالٍ مستقرّة يكلّف
+  // كتابتين لا غير (شريحة ثم ميتا) من الجهاز المعدِّل، وصفرًا من المستقبِل — وكان
+  // الدفعُ بلا تعقيم والإصلاحُ المتعجّل يضاعفانها
+  var wBefore = SHARED.syncWrites.length;
+  CLOCK.t += 5000;
+  var ovAmp = JSON.parse(JSON.stringify(MA.localStore[K.OVERRIDES] || { ar: {} }));
+  ovAmp.ar = ovAmp.ar || {}; ovAmp.ar["AmpKey"] = "مفتاح";
+  var ovAmpOld = MA.localStore[K.OVERRIDES];
+  MA.localStore[K.OVERRIDES] = ovAmp;
+  var chAmp = {}; chAmp[K.OVERRIDES] = { oldValue: ovAmpOld, newValue: ovAmp };
+  await CMLSync.handleLocalChange(envA, chAmp);
+  var wAfterPush = SHARED.syncWrites.length - wBefore;
+  CLOCK.t += 1000;
+  var ampEv = {}; ampEv[K.SYNC_META] = { newValue: SHARED.syncStore[K.SYNC_META] };
+  await CMLSync.handleSyncChange(envB, ampEv);
+  await CMLSync.handleLocalChange(envB, null);
+  var wAfterAll = SHARED.syncWrites.length - wBefore;
+  check("★★ تعديلُ مفتاحٍ واحد = كتابتان لا غير", "2", String(wAfterPush));
+  check("★★ والمستقبِل لا يُعيد الدفع (لا تضخّم)", "2", String(wAfterAll));
+
   // ================= ٩) محو السحابة: الجهاز الآخر سليم محليًّا وقادر على البناء =================
   CLOCK.t = T0 + 10000;
   var beforeA = JSON.stringify({ o: MA.localStore[K.OVERRIDES], p: MA.localStore[K.USER_PATTERNS] });

@@ -12,7 +12,37 @@
 // background.scripts بالترتيب نفسه، فالكائنات حاضرة قبل أن نصل هنا.
 if (typeof importScripts === "function") importScripts("cml-const.js", "cml-shared.js", "cml-rtl.js", "cml-arbiter.js", "cml-sync.js");
 
-var arbiter = CMLArbiter.createArbiter();
+// نسخةٌ حيّة من مفتاح الحجز القديم كي تكون استشارةُ المحكّم متزامنة (انظر رأس المحكّم).
+// المفتاح يعيش في session حيث تتوفّر، وإلا في local — كما يكتبه المحرّك تمامًا.
+var legacyClaim = null;
+function claimArea() {
+  try { return chrome.storage.session || chrome.storage.local; } catch (e) { return chrome.storage.local; }
+}
+function readLegacyClaim() {
+  try {
+    claimArea().get([CMLConst.K.SCAN_CLAIM], function (r) {
+      void chrome.runtime.lastError;
+      legacyClaim = (r && r[CMLConst.K.SCAN_CLAIM]) || null;
+    });
+  } catch (e) {}
+}
+readLegacyClaim();
+
+var arbiter = CMLArbiter.createArbiter(null, {
+  legacyBusy: function () {
+    return !!(legacyClaim && legacyClaim.at && Date.now() - legacyClaim.at < CMLConst.CLAIM_STALE_MS);
+  },
+  onGrant: function (kind, at) {
+    var v = { id: "sw-grant", kind: kind, at: at };
+    legacyClaim = v;
+    var o = {}; o[CMLConst.K.SCAN_CLAIM] = v;
+    try { claimArea().set(o, function () { void chrome.runtime.lastError; }); } catch (e) {}
+  },
+  onRelease: function () {
+    legacyClaim = null;
+    try { claimArea().remove(CMLConst.K.SCAN_CLAIM, function () { void chrome.runtime.lastError; }); } catch (e) {}
+  },
+});
 
 chrome.runtime.onConnect.addListener(function (port) {
   if (port.name === CMLConst.PORT_CRAWL) arbiter.attach(port);
@@ -178,6 +208,8 @@ function syncQueue(changes) {
 }
 
 chrome.storage.onChanged.addListener(function (changes, area) {
+  // المرآة تبقى حيّة: التبويب الساقط إلى الطبقة القديمة يكتب المفتاح، فنراه فورًا
+  if (changes[CMLConst.K.SCAN_CLAIM]) legacyClaim = changes[CMLConst.K.SCAN_CLAIM].newValue || null;
   if (area === "local") {
     // العلم المخبوء يُحدَّث أولًا: لحظةُ الموافقة نفسها تمرّ من هنا قبل syncQueue
     if (changes[CMLConst.K.SYNC_ENABLED]) {

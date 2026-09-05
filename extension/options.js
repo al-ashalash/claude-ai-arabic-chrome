@@ -89,11 +89,19 @@
     }
     var inp = document.createElement("input");
     inp.value = value; inp.setAttribute("aria-label", "ترجمة: " + en);
+    inp.dataset.en = en;
+    // إعادةُ الرسم كانت تُسقط التركيز إلى body بعد الحفظ بلوحة المفاتيح: نعيده إلى السطر نفسه
+    if (pendingFocus && pendingFocus.en === en) {
+      var pf = pendingFocus; pendingFocus = null;
+      setTimeout(function () { try { (pf.btn ? save : inp).focus(); } catch (e) {} }, 0);
+    }
     var acts = document.createElement("div"); acts.className = "acts";
 
     if (opts.missing) inp.placeholder = "اكتب الترجمة…";
 
     var save = document.createElement("button"); save.textContent = opts.missing ? "ترجم" : "حفظ";
+    save.dataset.en = en;
+    save.setAttribute("aria-label", (opts.missing ? "ترجم: " : "حفظ ترجمة: ") + en); // 44 زرًّا اسمها «حفظ» لا يميّزها قارئ الشاشة
     save.addEventListener("click", function () {
       get(["cml_overrides", "cml_user_patterns", "cml_scan_result"], function (s2) {
         var o = s2.cml_overrides || {}; o[LANG] = o[LANG] || {};
@@ -230,7 +238,10 @@
     });
   }
 
+  var pendingFocus = null; // {en, btn}: السطر الذي كان مركَّزًا قبل إعادة الرسم
   function renderTerms() {
+    var ae = document.activeElement;
+    if (ae && ae.dataset && ae.dataset.en) pendingFocus = { en: ae.dataset.en, btn: ae.tagName === "BUTTON" };
     var q = norm($("termSearch") && $("termSearch").value);
     // التصفية بالمصدر: الكل / قاموس الإضافة (المترجَم) / غير المترجَم من الفحص / تصحيحاتك
     var filter = ($("termFilter") && $("termFilter").value) || "all";
@@ -332,7 +343,10 @@
     if (!a || !b) { flash($("termsStatus"), "اكتب الكلمتين."); return; }
     get(["cml_overrides"], function (s) {
       var o = s.cml_overrides || {}; o[LANG] = o[LANG] || {}; o[LANG][a] = b;
-      set({ cml_overrides: o }, function () { $("newSrc").value = ""; $("newDst").value = ""; renderTerms(); flash($("termsStatus"), "أُضيفت ✓"); });
+      set({ cml_overrides: o }, function (err) {
+        if (err) { flash($("termsStatus"), "تعذّر الحفظ — " + err, true); return; } // كان يعلن النجاح والمخزن خالٍ
+        $("newSrc").value = ""; $("newDst").value = ""; renderTerms(); flash($("termsStatus"), "أُضيفت ✓");
+      });
     });
   }
 
@@ -387,6 +401,9 @@
   }
 
   // parse a terms/translation file into {en:ar} pairs (accepts several shapes)
+  // المفتاح يُقصّ ويُسقط الفارغ: المحرّك يقصّ نصّ الصفحة قبل البحث، فمفتاحٌ محفوفٌ ببياض
+  // أو فارغ كان يُخزَّن حرفيًّا ولا يطابق شيئًا أبدًا — مدخلٌ ميّت في «تصحيحاتك»
+  function putPair(out, k, v) { k = String(k || "").trim(); if (k) out[k] = v; }
   function parsePairs(obj) {
     var out = {};
     var arr = null;
@@ -394,9 +411,9 @@
     else if (obj && Array.isArray(obj.terms)) arr = obj.terms;
     // اشتراط النصّية هنا كما في بقية الفروع: بدونه تُكتب كائنات ومصفوفات في القاموس
     // فيحاول المحرّك أن يضعها في الصفحة فتظهر «[object Object]» مكان الترجمة.
-    else if (obj && obj.data && obj.data.cml_overrides) { var o = obj.data.cml_overrides[LANG] || obj.data.cml_overrides.ar || {}; Object.keys(o).forEach(function (k) { if (typeof o[k] === "string") out[k] = o[k]; }); return out; }
-    else if (obj && typeof obj === "object") { Object.keys(obj).forEach(function (k) { if (typeof obj[k] === "string") out[k] = obj[k]; }); return out; }
-    if (arr) arr.forEach(function (p) { if (p && typeof p.en === "string" && typeof p.ar === "string") out[p.en] = p.ar; });
+    else if (obj && obj.data && obj.data.cml_overrides) { var o = obj.data.cml_overrides[LANG] || obj.data.cml_overrides.ar || {}; Object.keys(o).forEach(function (k) { if (typeof o[k] === "string") putPair(out, k, o[k]); }); return out; }
+    else if (obj && typeof obj === "object") { Object.keys(obj).forEach(function (k) { if (typeof obj[k] === "string") putPair(out, k, obj[k]); }); return out; }
+    if (arr) arr.forEach(function (p) { if (p && typeof p.en === "string" && typeof p.ar === "string") putPair(out, p.en, p.ar); });
     return out;
   }
 
@@ -443,8 +460,9 @@
             else { byRe[p.re] = pats.length; pats.push(p); }
             nPat++;
           } else {
-            if (haveTerms >= IMPORT_MAX_TERMS) { nCapped++; return; }
-            if (o[LANG][k] === undefined) haveTerms++;
+            var isNew = o[LANG][k] === undefined;
+            if (isNew && haveTerms >= IMPORT_MAX_TERMS) { nCapped++; return; } // السقف على الجديد لا على تحديث الموجود
+            if (isNew) haveTerms++;
             o[LANG][k] = pairs[k]; nPlain++;
           }
         });
@@ -593,7 +611,11 @@
       cnt.textContent = "جارٍ الفحص…";
       var done = r.fetched || 0, left = r.queued || 0;
       var pct = done + left > 0 ? Math.min(99, Math.round((done / (done + left)) * 100)) : 0;
-      st.textContent = "التقدّم نحو " + pct + "٪ — قرأ " + done + " ملفًا، ووجد " + (r.found || 0) + " نصًّا…";
+      // لا تدهس رسالةً وامضة (تأكيد استيراد أو خطأ حفظ) — وارفع صنف الخطأ عن سطر التقدّم
+      if (!st.dataset.flashing) {
+        st.textContent = "التقدّم نحو " + pct + "٪ — قرأ " + done + " ملفًا، ووجد " + (r.found || 0) + " نصًّا…";
+        st.classList.remove("err");
+      }
       // صفحة إعدادات فُتحت من جديد أثناء فحصٍ جارٍ كانت تعرض الزر مفعّلًا، فضغطُه يمسح
       // حجز الزاحف النشط ويُطلق زحفًا موازيًا. الفحص جارٍ ⇒ الزر معطَّل والإيقاف ظاهر.
       $("startScan").disabled = true;
@@ -619,6 +641,7 @@
     cnt.textContent = r.missing ? (r.missing + " نصًّا غير مترجم") : "كل شيء مترجَم ✓";
     // لا تدهس رسالة flash نشطة (تأكيد استيراد مثلًا) — الملخص يبقى متاحًا في العدّاد
     if (!st.dataset.flashing) {
+      st.classList.remove("err");
       var msg = "فُحص " + (r.fetched || 0) + " ملفًا و" + (r.found || 0) + " نصًّا في " + (r.seconds || 0) + " ثانية.";
       if (nVars) msg += " منها " + nVars + " نصًّا متغيّرًا يصير قواعد ذكية.";
       if (r.capped) msg += " (عُرض أول 4000 نصّ)";
@@ -676,7 +699,10 @@
         done = true;
         try { clearTimeout(t); } catch (e) {}
         if (chrome.runtime.lastError || !r) { legacy(); return; }
-        cb(!!r.busy);
+        if (!r.busy) { cb(false); return; }
+        // العامل يقول «مشغول» — لكن منفذًا حيًّا بعملٍ ميّت (جلبٌ لا يُحسم) كان يقفل الفحص
+        // بلا مخرج: فالحكم للنبض (legacy يفحص الحجز ونبضَي «جارٍ»)، لا للمنفذ وحده
+        legacy();
       });
     } catch (e) {
       if (!done) { done = true; try { clearTimeout(t); } catch (e2) {} legacy(); }

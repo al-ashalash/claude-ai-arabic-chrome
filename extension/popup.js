@@ -22,6 +22,11 @@
         LANGS = data.languages || [];
         chrome.storage.local.get(["cml_lang", "cml_enabled", "cml_rtl", "cml_chatrtl"], function (s) {
           current = s.cml_lang || data.default || (LANGS[0] && LANGS[0].code) || "ar";
+          // رمزٌ مخزَّن لا يعرفه languages.json كان يحوّل الحفظ إلى دلوٍ ميت ويُصمت الترجمة كلها
+          if (!LANGS.some(function (l) { return l.code === current; })) {
+            current = data.default || (LANGS[0] && LANGS[0].code) || "ar";
+            chrome.storage.local.set({ cml_lang: current }, function () { void chrome.runtime.lastError; });
+          }
           enabled.checked = s.cml_enabled !== false;
           if (rtlToggle) rtlToggle.checked = s.cml_rtl !== false;
           if (chatrtlToggle) chatrtlToggle.checked = s.cml_chatrtl !== false;
@@ -61,6 +66,7 @@
       ov[current] = ov[current] || {};
       ov[current][a] = b;
       chrome.storage.local.set({ cml_overrides: ov }, function () {
+        if (chrome.runtime.lastError) { status.textContent = "تعذّر الحفظ / save failed"; return; } // لا نجاحَ معلَنًا بعد كتابةٍ فاشلة
         status.textContent = "تم الحفظ ✓ / saved";
         src.value = ""; dst.value = "";
         setTimeout(function () { status.textContent = ""; }, 2500);

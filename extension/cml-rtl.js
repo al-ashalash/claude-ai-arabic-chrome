@@ -171,7 +171,9 @@
       for (var p = 0; p < parents.length; p++) {
         for (var c = 0; c < children.length; c++) {
           var ch = children[c].trim(), pa = parents[p].trim();
-          out.push(ch.indexOf("&") !== -1 ? ch.split("&").join(pa) : pa + " " + ch);
+          // & المهرَّبة (\&) جزءٌ من اسم صنفٍ لا مرجعُ تداخل — كانت تُستبدل فتُنتج محدِّدًا هراءً
+          var hasAmp = /(^|[^\\])&/.test(ch);
+          out.push(hasAmp ? ch.replace(/(^|[^\\])&/g, function (m0, pre) { return pre + pa; }) : pa + " " + ch);
         }
       }
       return out.join(", ");
@@ -222,7 +224,7 @@
       var start = j;
       var end = skipBlock(j);
       stats.skippedAt++;
-      if (/^@(-webkit-)?keyframes/i.test(prelude) &&
+      if (/^@(?:(?:-webkit-)?keyframes|starting-style)/i.test(prelude) &&
           /translatex\s*\(|translate3d\s*\(|translate\s*\(|[^-\w](left|right)\s*:/i.test(text.slice(start, end))) {
         stats.animatedPhysical++;
       }
@@ -524,7 +526,9 @@
       var ft = flipTransform(v);
       if (ft === PH) return null;         // إزاحاته عبر متغيّرات — تصريحاتها تغطيه
       if (ft !== null) return { kind: "flip", flips: [{ prop: "transform", value: ft }], neutral: [] };
-      if (/translate/i.test(v)) return { kind: "physical-unflippable", reason: "transform-complex" };
+      // كان /translate/ يوسم translateY(-50%) عجزًا كاذبًا: العجز إزاحةٌ سينية في سلسلةٍ لا تُقلب، أو مصفوفة
+      if (/(?:^|[^a-z-])translate(?:x|3d)?\s*\(/i.test(v)) return { kind: "physical-unflippable", reason: "transform-complex" };
+      if (/matrix(?:3d)?\s*\(/i.test(v)) return { kind: "physical-unflippable", reason: "transform-matrix" };
       return null;
     }
     if (prop === "translate") {
@@ -538,6 +542,10 @@
       if (fx2 === x0) return null;        // صفر — محايد
       tv[0] = fx2;
       return { kind: "flip", flips: [{ prop: "translate", value: tv.join(" ") }], neutral: [] };
+    }
+    // تدرّجٌ بزاويةٍ غير عمودية لا يُقلب بتبديل كلمات — يُصرَّح به عجزًا قبل فروع الخلفية
+    if (/(?:linear|conic|repeating-linear)-gradient\(\s*-?\d+(?:\.\d+)?deg/i.test(v) && !/gradient\(\s*(?:0|180|360)deg/i.test(v)) {
+      return { kind: "physical-unflippable", reason: "gradient-angle" };
     }
     if (prop === "background" || prop === "background-image") {
       var swb = swapWords(v);
@@ -578,6 +586,15 @@
       return null;
     }
     if (prop === "direction" || prop === "unicode-bidi") return { kind: "logical" };
+    // عائلة mask كانت لا تُحلَّل أصلًا (لا قلب ولا تصريح) — كلمات الجهة تُقلب كالخلفية
+    if (/^(?:-webkit-)?mask(?:-image|-position|-position-x)?$/.test(prop) && /\b(?:left|right)\b/i.test(v)) {
+      var mv = v.replace(/\b(left|right)\b/gi, function (w) { return w.toLowerCase() === "left" ? "right" : "left"; });
+      return { kind: "flip", flips: [{ prop: prop, value: mv }], neutral: [] };
+    }
+    // تدرّجٌ بزاويةٍ غير عمودية لا يُقلب بتبديل كلمات — يُصرَّح به عجزًا ولا يُسكَت
+    if (/(?:linear|conic|repeating-linear)-gradient\(\s*-?\d+(?:\.\d+)?deg/i.test(v) && !/gradient\(\s*(?:0|180|360)deg/i.test(v)) {
+      return { kind: "physical-unflippable", reason: "gradient-angle" };
+    }
     return null;
   }
 
@@ -727,7 +744,49 @@
     return null;
   }
 
-  function ctxKey(ctx) { return ctx.join("|"); }
+  // تقسيمُ قائمة محدِّدات على الفواصل خارج الأقواس والمعقوفات والسلاسل
+  function splitSelList(str) {
+    var out = [], depth = 0, q = null, cur = "";
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charAt(i);
+      if (q) { cur += c; if (c === "\\") { cur += str.charAt(++i); } else if (c === q) q = null; continue; }
+      if (c === '"' || c === "'") { q = c; cur += c; continue; }
+      if (c === "\\") { cur += c + str.charAt(++i); continue; }
+      if (c === "(" || c === "[") depth++;
+      else if (c === ")" || c === "]") depth--;
+      if (c === "," && depth === 0) { out.push(cur); cur = ""; continue; }
+      cur += c;
+    }
+    if (cur.trim()) out.push(cur);
+    return out;
+  }
+  // تخصيصُ محدِّدٍ واحد رقمًا واحدًا (معرّفات×10⁶ + أصناف×10³ + عناصر): :where صفر،
+  // و:is/:not/:has تأخذ أعلى تخصيصٍ في وسائطها. الهروب (\:) لا يُعدّ رمزًا.
+  function specificity(sel) {
+    var s = String(sel).replace(/\\(?:[0-9a-fA-F]{1,6}\s?|.)/g, "_");
+    var a = 0, b = 0, c = 0, m;
+    var FN = /:(where|is|not|has|matches|-webkit-any)\(/i;
+    while ((m = FN.exec(s))) {
+      var st = m.index + m[0].length, d = 1, e = st;
+      while (e < s.length && d > 0) { var ch2 = s.charAt(e); if (ch2 === "(") d++; else if (ch2 === ")") d--; e++; }
+      var inner = s.slice(st, e - 1);
+      if (m[1].toLowerCase() !== "where") {
+        var best = 0, parts = splitSelList(inner);
+        for (var pi2 = 0; pi2 < parts.length; pi2++) best = Math.max(best, specificity(parts[pi2]));
+        a += Math.floor(best / 1000000); b += Math.floor(best / 1000) % 1000; c += best % 1000;
+      }
+      s = s.slice(0, m.index) + " " + s.slice(e);
+    }
+    s = s.replace(/\[[^\]]*\]/g, function () { b++; return " "; });
+    s = s.replace(/#[\w-]+/g, function () { a++; return " "; });
+    s = s.replace(/::[\w-]+/g, function () { c++; return " "; });
+    s = s.replace(/:[\w-]+(?:\([^)]*\))?/g, function () { b++; return " "; });
+    s = s.replace(/\.[\w-]+/g, function () { b++; return " "; });
+    s = s.replace(/(^|[\s>+~])([a-zA-Z][\w-]*)/g, function () { c++; return " "; });
+    return a * 1000000 + b * 1000 + c;
+  }
+  // الفاصل \u0001 لا يرد في CSS: «|» كان يرد في @supports selector(a|b) فيُغلق القوس مرتين
+  function ctxKey(ctx) { return ctx.join("\u0001"); }
   function fnv1a(str) {
     var h = 0x811c9dc5;
     for (var j = 0; j < str.length; j++) {
@@ -752,9 +811,28 @@
       var r = layerOrder.indexOf(layer);
       return r === -1 ? layerOrder.length : r;
     }
-    var sorted = rules.slice().sort(function (a, b) {
+    // ★ لفُّ المحدِّد في :where() يُسقط تخصيصَه، فقاعدتان للموقع في الطبقة نفسها بتخصيصَين
+    // مختلفين كانتا تُحسمان عندنا بالترتيب وحده — بينما يحسمهما الموقع بالتخصيص (قِيس: 1,891
+    // زوجًا يتقاسمان الخانة والأسبقُ فيها أعلى تخصيصًا). فالفرز: الطبقة، ثم تخصيصُ المحدِّد
+    // الأصلي تصاعديًّا (الأعلى يُبثّ آخِرًا فيغلب عند تساوي التخصيص المسطَّح)، ثم الموضع.
+    // وقائمةُ محدِّداتٍ متفاوتةِ التخصيص تُفصل قاعدةً لكل محدِّد كي يُفرز كلٌّ بحقّه.
+    var expanded = [];
+    for (var ei = 0; ei < rules.length; ei++) {
+      var er = rules[ei], parts = splitSelList(er.sel);
+      if (parts.length < 2) { er.spec = specificity(er.sel); expanded.push(er); continue; }
+      var specs = parts.map(specificity), same = specs.every(function (s) { return s === specs[0]; });
+      if (same) { er.spec = specs[0]; expanded.push(er); continue; }
+      for (var pi = 0; pi < parts.length; pi++) {
+        var clone = {}; for (var kk in er) { if (Object.prototype.hasOwnProperty.call(er, kk)) clone[kk] = er[kk]; }
+        clone.sel = parts[pi].trim(); clone.spec = specs[pi]; clone.idx = er.idx + pi / 1000;
+        expanded.push(clone);
+      }
+    }
+    var sorted = expanded.sort(function (a, b) {
       var ra = rank(a.layer), rb = rank(b.layer);
-      return ra !== rb ? ra - rb : a.idx - b.idx; // فرز مستقر بالموضع الأصلي
+      if (ra !== rb) return ra - rb;
+      if (a.spec !== b.spec) return a.spec - b.spec;
+      return a.idx - b.idx; // فرز مستقر بالموضع الأصلي
     });
     var neutral = [], neutralImp = [], logical = [], logicalImp = [];
     var dirBoost = [], dirBoostImp = [], coverage = [], covSeen = {};
@@ -871,7 +949,7 @@
     }
     if (open) out.push(closeOf(open));
     return out.join("\n");
-    function closeOf(key) { return "}".repeat(key.split("|").length); }
+    function closeOf(key) { return "}".repeat(key.split("\u0001").length); }
   }
 
   // جزر LTR: داخلها تبقى الخصائص المنطقية على يسارها لأن direction:ltr يحسمها،

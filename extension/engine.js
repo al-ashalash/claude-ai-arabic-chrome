@@ -59,6 +59,7 @@
     };
     buildPlurals();
     buildPatterns();
+    patIndex = null; patGeneric = null; // يُبنى كسولًا عند أول بحث
     lookupCache = new Map(); // النتائج المخزّنة تعتمد على القاموس والقواعد — أبطِلها مع كل إعادة تركيب
     reportBadRules();
   }
@@ -192,12 +193,43 @@
     for (var i = 0; i < active.patterns.length; i++) {
       var p = active.patterns[i];
       if (!p || !p.re || !p.ar) continue;
-      try { patRes.push({ re: new RegExp(p.re), ar: p.ar }); } catch (e) { badPatterns++; }
+      try { patRes.push({ re: new RegExp(p.re), ar: p.ar, key: patKey(p.re) }); } catch (e) { badPatterns++; }
+    }
+  }
+  // ★ فهرسُ الأنماط بأول كلمةٍ ثابتة: كل نصٍّ لاتينيٍّ غير مترجَم كان يمسح 2,595 تعبيرًا خطيًّا
+  // (0.63 مث للنص؛ 300 عنوان محادثة = 189 مث تجميدًا). 2,020 من الأنماط تبدأ بحرفٍ ثابت،
+  // فمفتاحُها أولُ كلمةٍ في en، وما بدأ بمتغيّرٍ يذهب إلى سلّةٍ عامة تُفحص دائمًا. ترتيبُ
+  // الفحص العام (التخصيص) محفوظ: الدمج بين السلّتين بمؤشّرين على الفهارس التصاعدية.
+  var patIndex = null, patGeneric = null;
+  // المفتاح من **مصدر التعبير** لا من en: قاعدةٌ تبدأ بتناوبٍ (^(Jan|Feb|…)) يذكر en بديلًا
+  // واحدًا منها فيَضلّ الفهرس. حروفٌ لاتينية تلي ^ مباشرةً، ولا تُعتمد إلا إذا قطع الحرفُ
+  // التالي الكلمةَ يقينًا (فراغ/ترقيم/\s/\b/نهاية) — وإلا (? * + { | ( [ .) فالسلّة العامة.
+  // (أُثبت التكافؤ مع المسح الخطي على الحصاد كله: صفر تعارض في 22,625 نصًّا.)
+  function patKey(src) {
+    var m = /^\^([A-Za-z]+)(.?)/.exec(String(src || ""));
+    if (!m) return null;
+    var next = m[2];
+    if (next === "") return m[1];
+    if (/[ ,.:;\u00B7-]/.test(next)) return m[1];
+    if (next === "\\") { var nx = src.charAt(m[0].length); return (nx === "s" || nx === "b") ? m[1] : null; }
+    return null;
+  }
+  function buildPatIndex() {
+    patIndex = {}; patGeneric = [];
+    for (var i = 0; i < patRes.length; i++) {
+      var k = patRes[i].key;
+      if (k === null) patGeneric.push(i);
+      else (patIndex[k] = patIndex[k] || []).push(i);
     }
   }
   function tryPatterns(text) {
     if (!patRes || !patRes.length || !/[A-Za-z]/.test(text)) return null;
-    for (var i = 0; i < patRes.length; i++) {
+    if (!patIndex) buildPatIndex();
+    var km = /^([A-Za-z]+)/.exec(text);
+    var keyed = (km && Object.prototype.hasOwnProperty.call(patIndex, km[1])) ? patIndex[km[1]] : [];
+    var a = 0, b = 0;
+    while (a < keyed.length || b < patGeneric.length) {
+      var i = (b >= patGeneric.length || (a < keyed.length && keyed[a] < patGeneric[b])) ? keyed[a++] : patGeneric[b++];
       var m = text.match(patRes[i].re);
       if (!m) continue;
       var bad = false;
@@ -302,10 +334,17 @@
   //    أخفُّ علاجٍ جذريٍّ عام: نبضةُ resize واحدة مدمجةٌ بعد كل دفعة تعريب، فتعيد
   //    المكوناتُ قياسَها بمساراتها هي. لا حلقةَ هنا: الدفعة التالية بلا كتابةٍ فلا نبضة.
   var relayoutTimer = null;
+  // سقفُ النبضات: مكوّنٌ يعيد كتابة نصّه عند resize كان يدخل حلقة ترجمة→نبضة→كتابة→ترجمة
+  // (7 أحداث في 4 ثوانٍ مقيسًا). ثلاثُ نبضاتٍ في ثلاث ثوانٍ تكفي كل استعمالٍ مشروع.
+  var nudgeStamps = [];
   function scheduleRelayoutNudge() {
     if (relayoutTimer) return;
     relayoutTimer = setTimeout(function () {
       relayoutTimer = null;
+      var now = Date.now();
+      nudgeStamps = nudgeStamps.filter(function (s) { return now - s < 3000; });
+      if (nudgeStamps.length >= 3) return;
+      nudgeStamps.push(now);
       try { window.dispatchEvent(new Event("resize")); } catch (e) {}
     }, 250);
   }
@@ -374,7 +413,9 @@
   // إيقاف الترجمة يجب أن يُرجع النص الإنجليزي فورًا، لا أن يترك ما تُرجم مترجمًا.
   // سجلّ الأصول يجعل ذلك ممكنًا بلا تحديث الصفحة.
   function restoreAll(root) {
-    var scope = root || document.body || document.documentElement;
+    // ★ المراقب يغطي documentElement كله (عنوان التبويب، سمات <body>) بينما كانت الاستعادة
+    // تمشي على body فقط وتستثني الجذر نفسه — فالإطفاء لا يُرجع كل ما كُتب
+    var scope = root || document.documentElement || document.body;
     if (!scope) return;
     var tw = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
     var n, list = [];
@@ -384,7 +425,8 @@
       if (rec && list[i].nodeValue === rec.lastWritten) { list[i].nodeValue = rec.raw; appliedText.delete(list[i]); }
     }
     if (scope.querySelectorAll) {
-      var els = scope.querySelectorAll("[placeholder],[aria-label],[title],[alt]");
+      var els = Array.prototype.slice.call(scope.querySelectorAll("[placeholder],[aria-label],[title],[alt]"));
+      if (scope.nodeType === 1 && appliedAttr.has(scope)) els.push(scope); // الجذرُ نفسه لا يلتقطه querySelectorAll
       for (var j = 0; j < els.length; j++) {
         var ar = appliedAttr.get(els[j]);
         if (!ar) continue;
@@ -467,7 +509,11 @@
         var nd = added[i];
         if (!nd.isConnected) continue; // عقدة أُزيلت قبل أن نصل إليها
         if (nd.nodeType === 1) {
-          walk(nd); applyChatDir(nd);
+          walk(nd);
+          // ★ فقرةٌ يبثّها الموقع داخل حاوية رسالةٍ سبق معالجتها: applyChatDir تنظر إلى الأسفل
+          // فلا تجد الحاوية، فكانت الكتل المبثوثة (60/60 مقيسًا) تبقى بلا dir حتى مرورٍ كامل
+          // مصادفةً — فتُعرض العربية بعد فاتحةٍ إنجليزية LTR. الحاويةُ الحاضنة هي النطاق.
+          applyChatDir((nd.closest && nd.closest(CHATSEL)) || nd);
           // المواضع المحسوبة تظهر مع فروعها المستجدّة (قائمة تُفتح، لوحة تُركَّب)،
           // والمرور الكامل وحده كان يفوّتها حتى المرور التالي — فتظهر مقلوبةً لحظتَها
           markComputedSurfaces(nd);
@@ -485,7 +531,16 @@
   // resolveDir يجرّد ذلك الضجيج ثم يحكم، ولا يُرجع رأيًا إلا حين يجزم — وإلا
   // بقيت "auto" وهي سلوك المنصة القياسي (وقياسُنا أثبت أنه يضبط direction نفسها
   // فتصحّ الخصائص المنطقية للأحفاد، وهو ما لا يفعله unicode-bidi:plaintext).
+  // dir الذي وضعه الموقع نفسُه يُحفظ عند أول كتابة ويُرجَع عند الإطفاء — كان يُدهس ثم يُحذف
+  var chatDirOrig = new WeakMap();
+  function restoreDir(el) {
+    var o = chatDirOrig.get(el);
+    if (o === undefined || o === null) el.removeAttribute("dir"); else el.setAttribute("dir", o);
+    chatDirOrig.delete(el);
+    el.removeAttribute("data-cml-dir");
+  }
   function setChatDir(el) {
+    if (!chatDirOrig.has(el)) chatDirOrig.set(el, el.getAttribute("dir"));
     var want = "auto";
     try {
       var txt = el.textContent;
@@ -518,13 +573,13 @@
           kids[q].setAttribute("data-cml-dir", "1");
         }
       } else if (el.getAttribute("data-cml-dir")) {
-        el.removeAttribute("dir"); el.removeAttribute("data-cml-dir");
+        restoreDir(el);
       }
     }
     // تنظيف الأبناء عند الإطفاء (السلكتور أعلاه لا يلتقطهم لأنهم ليسوا حاويات رسائل)
     if (!on && scope.querySelectorAll) {
       var marked = scope.querySelectorAll("[data-cml-dir]");
-      for (var z = 0; z < marked.length; z++) { marked[z].removeAttribute("dir"); marked[z].removeAttribute("data-cml-dir"); }
+      for (var z = 0; z < marked.length; z++) restoreDir(marked[z]);
     }
   }
 
@@ -862,9 +917,12 @@
           //    فعدُّها نقصًا كان إنذارًا كاذبًا بنيويًّا يوهم المستخدم أن النتيجة معيبة.
           //  - غيرُ 404 (شبكة/5xx): إخفاق حقيقي قابل للشفاء — يدخل جولةَ إعادةٍ واحدة،
           //    وما بقي بعدها هو «الناقص» المصرَّح به بحق.
-          return fetch(base + n)
-            .then(function (r) { return r.ok ? r.text() : (r.status === 404 ? GHOST : null); })
-            .catch(function () { return null; });
+          // مهلةٌ كالطبيب: جلبٌ لا يُحسم كان يُبقي المنحة محجوزةً والفحصَ مقفولًا بلا مخرج
+          var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+          var tmo = setTimeout(function () { if (ctrl) ctrl.abort(); }, 15000);
+          return fetch(base + n, ctrl ? { signal: ctrl.signal } : undefined)
+            .then(function (r) { clearTimeout(tmo); return r.ok ? r.text() : (r.status === 404 ? GHOST : null); })
+            .catch(function () { clearTimeout(tmo); return null; });
         })).then(function (texts) {
           var a = 0;
           (function chew() {

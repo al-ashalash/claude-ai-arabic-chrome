@@ -18,6 +18,8 @@ dict.strings = dict.strings || {};
 const before = Object.keys(dict.strings).length;
 
 let seen = 0, added = 0, updated = 0, skipped = 0, bad = 0;
+const overrideSeen = new Map(); // ★ ملفا override يمسّان مفتاحًا واحدًا بقيمتين = الأخير بترتيب الاسم يدهس الأول بصمت
+let overrideClash = 0;
 for (const f of files) {
   const isOverride = /override/i.test(f); // files named *override* overwrite existing entries
   let arr;
@@ -33,6 +35,7 @@ for (const f of files) {
     if (!en || !ar || ar === en) { skipped++; continue; }         // skip empty / brand-kept
     const exists = Object.prototype.hasOwnProperty.call(dict.strings, en);
     if (exists && !isOverride) { skipped++; continue; }            // keep curated unless override
+    if (isOverride) { const prev = overrideSeen.get(en); if (prev !== undefined && prev !== ar) overrideClash++; overrideSeen.set(en, ar); }
     if (exists && dict.strings[en] === ar) { skipped++; continue; }
     dict.strings[en] = ar;
     if (exists) updated++; else added++;
@@ -44,6 +47,7 @@ const ordered = {};
 for (const k of Object.keys(dict.strings).sort((a, b) => a.localeCompare(b))) ordered[k] = dict.strings[k];
 dict.strings = ordered;
 if (dict._meta) dict._meta.count = Object.keys(dict.strings).length;
+if (overrideClash) console.warn("⚠ " + overrideClash + " مفتاحًا مسّه أكثر من ملف override بقيمٍ مختلفة — انقل المُطبَّق منها إلى _applied/ (الأخيرُ بترتيب الاسم هو ما ساد)");
 
 fs.writeFileSync(arPath, JSON.stringify(dict, null, 2) + "\n", "utf8");
 console.log(`batches: ${files.length} (bad: ${bad}) | pairs seen: ${seen} | added: ${added} | updated: ${updated} | skipped: ${skipped}`);

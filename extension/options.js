@@ -112,7 +112,7 @@
         if (/\{[A-Za-z_$][\w$]*\}/.test(en)) {
           // نصّ بمتغيّرات: يُحفظ قاعدةً ذكية لا مطابقةً حرفية — الحرفية لن تصادف النص المعروض أبدًا
           var p = makePattern(en, v);
-          if (!p) { flash($("termsStatus"), "لا تصلح قاعدةً آمنة: انسخ كل {متغيّر} كما هو وأبقِ نصًّا ثابتًا كافيًا."); return; }
+          if (!p) { flash($("termsStatus"), "لا تصلح قاعدةً ذكية: انسخ كل {متغيّر} كما هو وأبقِ نصًّا ثابتًا كافيًا."); return; }
           var pats = Array.isArray(s2.cml_user_patterns) ? s2.cml_user_patterns.slice() : [];
           var idx = -1;
           pats.forEach(function (x, i) { if (x.re === p.re) idx = i; });
@@ -161,7 +161,7 @@
           var o = s2.cml_overrides || {}; if (o[LANG]) delete o[LANG][en];
           set({ cml_overrides: o }, function () {
             renderTerms();
-            flash($("termsStatus"), BASE[en] !== undefined ? "استُعيد نصّ القاموس." : "حُذفت");
+            flash($("termsStatus"), BASE[en] !== undefined ? "استُعيد نصّ القاموس." : "حُذف التصحيح.");
           });
         });
       });
@@ -225,9 +225,9 @@
       var o = s.cml_overrides || {}, ov = o[LANG] || {};
       var r = reconcile(ov);
       if (!r.same.length) return;
-      if (!confirm("سيُحذف " + r.same.length + " تصحيحًا **مطابقًا** لنصّ القاموس حرفًا بحرف.\n\n" +
+      if (!confirm("سيُحذف " + r.same.length + " تصحيحًا مطابقًا لنصّ القاموس حرفًا بحرف.\n\n" +
         "لن يتغيّر شيء فيما تراه على الشاشة — القاموس يعطي النصّ نفسه.\n" +
-        "والفائدة أن ترى أي تحسين لاحق في هذه المفردات.\n\nأتتابع؟")) return;
+        "والفائدة أن ترى أي تحسين لاحق في هذه النصوص.\n\nأتتابع؟")) return;
       r.same.forEach(function (k) { delete ov[k]; });
       o[LANG] = ov;
       set({ cml_overrides: o }, function (err) {
@@ -292,7 +292,7 @@
         if (filter === "missing") {
           empty(sr && sr.status === "done"
             ? (missTotal ? "لا نتائج مطابقة لبحثك في غير المترجَم." : "لا يوجد غير مترجَم — المصدر مطابق لآخر فحص ✓")
-            : "لم يُجرَ فحص بعد. شغّله من «تحديث المصدر — فحص الموقع» أدناه.");
+            : "لم يُجرَ فحص بعد. شغّله من «تحديث المصدر — فحص الموقع» أعلاه.");
         } else if (filter === "dict") {
           empty(searching ? "لا نتائج مطابقة في قاموس الإضافة." : "اكتب حرفين على الأقل للبحث في قاموس الإضافة.");
         } else if (filter === "mine") {
@@ -300,7 +300,7 @@
         } else {
           empty(q
             ? (searching ? "لا نتائج مطابقة." : "اكتب حرفين على الأقل للبحث في القاموس.")
-            : "ابحث أعلاه لتجد أي مفردة وتعدّلها، أو اختر تصفيةً لتصفّح مصدرًا بعينه.");
+            : "ابحث أعلاه لتجد أي ترجمة وتعدّلها، أو اختر تصفيةً لتصفّح مصدرًا بعينه.");
         }
         return;
       }
@@ -340,12 +340,12 @@
 
   function addTerm() {
     var a = ($("newSrc").value || "").trim(), b = ($("newDst").value || "").trim();
-    if (!a || !b) { flash($("termsStatus"), "اكتب الكلمتين."); return; }
+    if (!a || !b) { flash($("termsStatus"), "املأ الحقلين."); return; }
     get(["cml_overrides"], function (s) {
       var o = s.cml_overrides || {}; o[LANG] = o[LANG] || {}; o[LANG][a] = b;
       set({ cml_overrides: o }, function (err) {
         if (err) { flash($("termsStatus"), "تعذّر الحفظ — " + err, true); return; } // كان يعلن النجاح والمخزن خالٍ
-        $("newSrc").value = ""; $("newDst").value = ""; renderTerms(); flash($("termsStatus"), "أُضيفت ✓");
+        $("newSrc").value = ""; $("newDst").value = ""; renderTerms(); flash($("termsStatus"), "أُضيف التصحيح ✓");
       });
     });
   }
@@ -395,8 +395,8 @@
         lang: LANG, count: arr.length, terms: arr,
       }, null, 2));
 
-      flash($("termsStatus"), "صُدِّر " + arr.length.toLocaleString("ar") + " نصًّا" +
-        (untranslated ? " (منها " + untranslated.toLocaleString("ar") + " غير مترجَم من الفحص)" : "") + " ✓");
+      flash($("termsStatus"), "صُدِّر " + arr.length.toLocaleString("en") + " نصًّا" +
+        (untranslated ? " (منها " + untranslated.toLocaleString("en") + " غير مترجَم من الفحص)" : "") + " ✓");
     });
   }
 
@@ -426,7 +426,7 @@
   function importTermsFile(file, statusEl) {
     // سقف الحجم قبل القراءة: ملف بمئات الميغابايتات يجمّد التبويب في FileReader نفسه
     if (file && file.size > IMPORT_MAX_BYTES) {
-      flash(statusEl, "الملف أكبر من اللازم (" + Math.round(file.size / 1048576) + " ميغابايت). الحدّ 5 ميغابايت.");
+      flash(statusEl, "الملف أكبر من اللازم (" + Math.round(file.size / 1048576) + " ميغابايت). الحدّ الأقصى 5 ميغابايت.");
       return;
     }
     var reader = new FileReader();
@@ -497,7 +497,7 @@
           renderTerms();
           var msg = "تم استيراد " + (nPlain + nPat) + " ✓";
           if (nPat) msg += " (منها " + nPat + " قاعدة ذكية)";
-          if (nSkip) msg += " — تُجووزت " + nSkip + " لعدم صلاحيتها كقاعدة";
+          if (nSkip) msg += " — وأُهملت " + nSkip + " لعدم صلاحيتها قاعدةً ذكية";
           if (nCapped) msg += " — و" + nCapped + " تجاوزت الحدّ الأقصى فلم تُستورد";
           flash(statusEl, msg);
         });
@@ -530,7 +530,7 @@
       "1) عربية فصحى موجزة بأسلوب واجهات البرامج — لا حشو ولا ترجمة حرفية ركيكة.",
       "2) تبقى إنجليزية كما هي: Claude، Anthropic، Cowork، Opus، Sonnet، Haiku، Fable، Max،",
       "   MCP، API، SDK، CLI، JSON، URL، PDF، CSV، GitHub، Google، Slack، Chrome، Windows،",
-      "   macOS، Linux، iOS، Android، وأسماء الملفات والمسارات والأكواد.",
+      "   macOS، Linux، iOS، Android، وأسماء الملفات والمسارات والتعليمات البرمجية.",
       "3) أسماء الميزات الكبرى: تُكتب «الترجمة (English)» إذا كان النص عنوانًا أو زرًّا مستقلًّا",
       "   — مثل: المشاريع (Projects)، المُخرَجات (Artifacts)، المهارات (Skills)،",
       "   الموصّلات (Connectors)، الذاكرة (Memory)، البرمجة (Code)، العمل المشترك (Cowork).",
@@ -564,7 +564,7 @@
   function renderStats(r) {
     var dT = $("donutT"), dU = $("donutU"), pT = $("pctT"), pU = $("pctU"), line = $("statLine");
     if (!dT || !line) return; // صفحة اختبار بلا دوائر
-    var dictN = BASE_KEYS.length.toLocaleString("ar");
+    var dictN = BASE_KEYS.length.toLocaleString("en");
     if (r && r.status === "done" && r.found > 0) {
       var miss = r.missing || 0;
       var pctU = Math.min(100, Math.round(miss / r.found * 100));
@@ -573,7 +573,7 @@
       dU.setAttribute("stroke-dasharray", (pctU / 100 * DONUT_C).toFixed(1) + " " + DONUT_C);
       pT.textContent = pctT + "٪"; pU.textContent = pctU + "٪";
       line.innerHTML = "قاموس الإضافة: <b>" + dictN + "</b> ترجمة · آخر فحص وجد <b>" +
-        r.found.toLocaleString("ar") + "</b> نصًّا في الموقع، غيرُ المترجَم منها <b>" + miss.toLocaleString("ar") + "</b>." +
+        r.found.toLocaleString("en") + "</b> نصًّا في الموقع، غيرُ المترجَم منها <b>" + miss.toLocaleString("en") + "</b>." +
         (miss
           ? " <b>لترجمتها:</b> «تنزيل أمر الترجمة» ثم «استيراد الترجمات» أدناه، أو اختر «غير المترجَم» في التصفية."
           : " المصدر مطابق لآخر فحص ✓");
@@ -581,7 +581,7 @@
       dT.setAttribute("stroke-dasharray", "0 " + DONUT_C);
       dU.setAttribute("stroke-dasharray", "0 " + DONUT_C);
       pT.textContent = "؟"; pU.textContent = "؟";
-      line.innerHTML = "قاموس الإضافة: <b>" + dictN + "</b> ترجمة. لقياس نسبة التغطية وجلب غير المترجَم، شغّل «تحديث المصدر — فحص الموقع» أدناه.";
+      line.innerHTML = "قاموس الإضافة: <b>" + dictN + "</b> ترجمة. لقياس نسبة التغطية وجلب غير المترجَم، شغّل «تحديث المصدر — فحص الموقع» أعلاه.";
     }
     // القواعد الفاسدة تُصرَّح لا تُبتلع: المحرك يعدّها في compile ويكتبها متى تغيّرت
     get([CMLConst.K.BAD_RULES], function (b) {
@@ -638,7 +638,7 @@
     $("startScan").disabled = false;
     $("startScan").textContent = "أعد الفحص";
     var nPlain = (r.list || []).length, nVars = (r.varList || []).length;
-    cnt.textContent = r.missing ? (r.missing + " نصًّا غير مترجم") : "كل شيء مترجَم ✓";
+    cnt.textContent = r.missing ? (r.missing + " نصًّا غير مترجَم") : "كل شيء مترجَم ✓";
     // لا تدهس رسالة flash نشطة (تأكيد استيراد مثلًا) — الملخص يبقى متاحًا في العدّاد
     if (!st.dataset.flashing) {
       st.classList.remove("err");
@@ -648,7 +648,7 @@
       // إخفاق الجلب يعني نتيجةً ناقصة — والسكوت عنه يجعل «تمّ» يبدو اكتمالًا وليس به
       if (r.failed) msg += " ⚠ تعذّر جلب " + r.failed + " ملفًا، فالنتيجة ناقصة — أعد الفحص.";
       msg += r.missing
-        ? " غيرُ المترجَم في «قاموس التعريب» أعلاه — النِّسَب والقائمة وأدوات الترجمة."
+        ? " غيرُ المترجَم في «قاموس التعريب» أدناه — النِّسَب والقائمة وأدوات الترجمة."
         : " المصدر مطابق لأحدث نسخة من الموقع ✓";
       st.textContent = msg;
     }
@@ -669,7 +669,7 @@
         $("cancelScan").classList.add("hidden");
         $("scanCount").textContent = "لم يصل الطلب";
         $("scanStatus").innerHTML =
-          "لم يستجب أي تبويب. الأرجح أن تبويب claude.ai مفتوح منذ ما قبل تحديث الإضافة، فسكربتها فيه منفصل. " +
+          "لم يستجب أي تبويب. الأرجح أن تبويب claude.ai مفتوح منذ ما قبل تحديث الإضافة، فلم يعد متصلًا بها. " +
           "<b>الحل:</b> افتح تبويب claude.ai واضغط <b>Ctrl+Shift+R</b> (تحديث كامل) وانتظر اكتمال تحميل الصفحة، ثم عُد هنا واضغط «ابدأ الفحص». " +
           "وإن لم يكن التبويب مفتوحًا أصلًا فافتحه أولًا.";
       }
@@ -757,9 +757,9 @@
     get(["cml_scan_result"], function (s) {
       var r = s.cml_scan_result;
       var plain = (r && r.list) || [], vars = (r && r.varList) || [];
-      if (!plain.length && !vars.length) { flash($("scanStatus"), "لا توجد نصوص للتصدير."); return; }
+      if (!plain.length && !vars.length) { flash($("scanStatus"), "لا توجد نصوص غير مترجَمة لتنزيلها."); return; }
       download("أمر-ترجمة-كلود-جديد.txt", buildPrompt(plain, vars), "text/plain;charset=utf-8");
-      flash($("scanStatus"), "نُزّل الملف (" + (plain.length + vars.length) + " نصًّا) وفيه الأمر كاملًا — الصقه في claude.ai.");
+      flash($("scanStatus"), "نُزّل الملف (" + (plain.length + vars.length) + " نصًّا) وفيه الأمر كاملًا — ألصقه في claude.ai.");
     });
   }
 
@@ -809,8 +809,8 @@
       }
       var d = new Date(r.at || 0);
       box.textContent = "الاتجاه مضبوط من الموقع: " + (r.flipped || 0) + " موضعًا مُعكَسًا من " +
-        (r.sources || 0) + " ملفَّ تصميم (" + Math.round((r.bytes || 0) / 1024) + " ك.ب) — آخر ضبطٍ " +
-        d.toLocaleDateString("ar") + " " + d.toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }) + ".";
+        (r.sources || 0) + " ملفَّ تصميم (" + Math.round((r.bytes || 0) / 1024) + " كيلوبايت) — آخر ضبطٍ " +
+        d.toLocaleDateString("ar-u-nu-latn") + " " + d.toLocaleTimeString("ar-u-nu-latn", { hour: "2-digit", minute: "2-digit" }) + ".";
     });
   }
 
@@ -867,7 +867,7 @@
     // الأنماط السطرية تُذكر ولا تُعدّ نقصًا: تركُها مبدأٌ في المحرّك لا سهوٌ — فالمحرّك
     // يقلب أصناف التنسيق وحدها، والمواضع التي تحسبها سكربتات الموقع بنفسها لا تُمسّ.
     msg += " وفي التنسيقات التي يحسبها الموقع بنفسه " + (r.inlinePhysical || 0) + " قاعدةً من " +
-      (r.inlineChecked || 0) + " عنصرًا مفحوصًا — وهذه لا يمسّها المحرّك عمدًا.";
+      (r.inlineChecked || 0) + " عنصرًا مفحوصًا — وهذه لا تمسّها الإضافة عمدًا.";
     // لا تدهس رسالة flash نشطة (تأكيد تنزيل مثلًا) — الملخص يبقى متاحًا في العدّاد
     if (!st.dataset.flashing) st.textContent = msg;
     if (!box) return;
@@ -895,7 +895,7 @@
         $("startRtlDoc").disabled = false;
         $("rtlDocCount").textContent = "لم يصل الطلب";
         $("rtlDocStatus").innerHTML =
-          "لم يستجب أي تبويب. الأرجح أن تبويب claude.ai مفتوح منذ ما قبل تحديث الإضافة، فسكربتها فيه منفصل. " +
+          "لم يستجب أي تبويب. الأرجح أن تبويب claude.ai مفتوح منذ ما قبل تحديث الإضافة، فلم يعد متصلًا بها. " +
           "<b>الحل:</b> افتح تبويب claude.ai واضغط <b>Ctrl+Shift+R</b> (تحديث كامل) وانتظر اكتمال تحميل الصفحة، ثم عُد هنا واضغط «ابدأ فحص الاتجاه». " +
           "وإن لم يكن التبويب مفتوحًا أصلًا فافتحه أولًا.";
       }
@@ -974,12 +974,12 @@
     var btn = $("syncWipeBtn"), note = $("syncWipeNote");
     if (!btn) return; // قشور الاختبار بلا هذا القسم
     btn.disabled = true;
-    if (note) note.textContent = "جارٍ سؤال مساحة المزامنة…";
+    if (note) note.textContent = "جارٍ التحقق من مساحة المزامنة…";
     probeSyncArea(function (keys, err) {
       if (!keys) {
         // لا ندري أفيها شيء أم لا ⇒ زرٌّ معطَّل وتصريحٌ بالسبب، لا زرٌّ يَعِد بما لا يفعل
         btn.disabled = true;
-        if (note) note.textContent = "تعذّر سؤال مساحة المزامنة (" + (err || "خطأ غير معروف") +
+        if (note) note.textContent = "تعذّر التحقق من مساحة المزامنة (" + (err || "خطأ غير معروف") +
           ") — فلا نعرف أفيها من هذه الإضافة شيء أم لا. أعد فتح هذه الصفحة، وإن تكرّر فتحقّق من مزامنة كروم في متصفحك.";
         return;
       }
@@ -991,7 +991,7 @@
       btn.disabled = false;
       if (note) note.textContent = enabled
         ? "في حسابك نسخةٌ مرفوعة من تصحيحاتك وقواعدك. ومحوُها لا يوقف المزامنة: ما دامت مفعّلةً هنا رُفعت نسختُك من جديد عند أول تعديل."
-        : "المزامنة مطفأة على هذا الجهاز، ونسختُك المرفوعة سابقًا لا تزال في حسابك — امسحها بالزرّ أعلاه، ولا حاجة إلى إعادة التفعيل.";
+        : "المزامنة متوقّفة على هذا الجهاز، ونسختُك المرفوعة سابقًا لا تزال في حسابك — امسحها بالزرّ أعلاه، ولا حاجة إلى إعادة التفعيل.";
     });
   }
 
@@ -1010,28 +1010,28 @@
       function pct(b) { return Math.min(100, Math.round((b || 0) / CMLConst.SYNC_TOTAL_BYTES * 100)); }
       if (st && st.status === "ok") {
         var kb = Math.round((st.bytes || 0) / 100) / 10; // بمنزلة عشرية: اللقطات الصغيرة لا تظهر صفرًا
-        line.innerHTML = "آخر رفع " + new Date(st.at || 0).toLocaleString("ar") + " — <b>" +
-          (st.count || 0).toLocaleString("ar") + "</b> من تصحيحاتك وقواعدك، <b>" +
-          kb.toLocaleString("ar") + "</b> كيلوبايت من " + SYNC_TOTAL_KB.toLocaleString("ar") + " كيلوبايت.";
+        line.innerHTML = "آخر رفع " + new Date(st.at || 0).toLocaleString("en") + " — <b>" +
+          (st.count || 0).toLocaleString("en") + "</b> من تصحيحاتك وقواعدك، <b>" +
+          kb.toLocaleString("en") + "</b> كيلوبايت من " + SYNC_TOTAL_KB.toLocaleString("en") + " كيلوبايت.";
         if (fill) { fill.style.width = pct(st.bytes) + "%"; fill.style.background = "var(--brand)"; }
       } else if (st && st.status === "overflow") {
         // صادقة لا مهوِّنة: لم يُرفع شيء من هذه الدفعة، والمحلي كامل لم يُمسّ
         var needKb = Math.ceil((st.need || 0) / 1000);
         line.innerHTML = "⚠ <b>لم يُرفع شيء:</b> تصحيحاتُك أكبر من مساحة المزامنة (تحتاج نحو " +
-          needKb.toLocaleString("ar") + " كيلوبايت والسقف " + SYNC_TOTAL_KB.toLocaleString("ar") +
+          needKb.toLocaleString("en") + " كيلوبايت والحدّ الأقصى " + SYNC_TOTAL_KB.toLocaleString("en") +
           "). كلُّها محفوظة محليًّا كما هي — احذف بعض التصحيحات، أو انقلها بين أجهزتك ملفًّا من «تصدير تصحيحاتك فقط».";
         if (fill) { fill.style.width = "100%"; fill.style.background = "var(--danger)"; }
       } else if (st && st.status === "wiped") {
         // بعد المسح: الصدق أن نقول «لا شيء مرفوع» ونُفرغ الشريط — كان يبقى سطرُ «آخر رفع»
         // وشريطُه ممتلئًا لبياناتٍ لم تعد في الحساب أصلًا
-        line.innerHTML = "مُحي ما كان مرفوعًا (" + new Date(st.at || 0).toLocaleString("ar") +
+        line.innerHTML = "مُحي ما كان مرفوعًا (" + new Date(st.at || 0).toLocaleString("en") +
           ") — <b>لا شيء مرفوع في حسابك الآن</b>. والمزامنة ما زالت مفعّلةً على هذا الجهاز، " +
           "فأول تعديل في تصحيحاتك أو قواعدك يرفعها من جديد.";
         if (fill) { fill.style.width = "0"; fill.style.background = "var(--brand)"; }
       } else if (st && st.status === "error") {
         // صريحة لا مهوّنة: هذه الدفعة لم تُرفع، والمحلي سليم، وسببُ المتصفح كما قاله
         // (وأغلبُه خنقُ كروم لكثرة الكتابات في الدقيقة)، ثم كيف تُستعجل المحاولة
-        line.textContent = "⚠ تعذّر الرفع الأخير (" + new Date(st.at || 0).toLocaleString("ar") +
+        line.textContent = "⚠ تعذّر الرفع الأخير (" + new Date(st.at || 0).toLocaleString("en") +
           ") — لم تُرفع هذه الدفعة، وتصحيحاتك كلها محفوظة على جهازك كما هي. " +
           "قال المتصفح: " + (st.error || "خطأ غير معروف") + " — وأكثرُه كثرةُ الكتابات في الدقيقة، ويحدّها كروم. " +
           "وتُعاد المحاولة تلقائيًّا عند أول تعديل أو إيقاظ للإضافة؛ ولاستعجالها عدّل تصحيحًا أو أعد تحميل الإضافة.";
@@ -1164,7 +1164,7 @@
               box.classList.add("hidden");
               // نصٌّ باقٍ لا وامض: التعليمة التالية (تحديث التبويبات) يجب ألا تختفي
               // قبل أن تُقرأ — فالإذن وحده لا يُحيي سكربتات التبويبات المفتوحة من قبل
-              st.textContent = "مُنح الإذن ✓ حدّث الآن تبويبات claude.ai المفتوحة (Ctrl+Shift+R) لتظهر الواجهة بالعربية.";
+              st.textContent = "مُنح الإذن ✓ — حدّث الآن تبويبات claude.ai المفتوحة (Ctrl+Shift+R) لتظهر الواجهة بالعربية.";
             } else {
               flash(st, "لم يُمنح الإذن — اضغط الزر ثم اختر «السماح» في حوار فايرفوكس.");
             }
@@ -1183,11 +1183,11 @@
     var also = !!($("resetWipeSync") && $("resetWipeSync").checked);
     var msg = also
       ? "سيُحذف من هذا الجهاز كل إعداداتك وتصحيحاتك وقواعدك الذكية ونتيجة الفحص،\n" +
-        "**ويُمحى أيضًا ما رُفع إلى مساحة مزامنة حسابك في جوجل**.\n\n" +
+        "ويُمحى أيضًا ما رُفع إلى مساحة مزامنة حسابك في جوجل.\n\n" +
         "يُمحى المرفوع أولًا؛ فإن تعذّر لم يُحذف من جهازك شيء.\n" +
         "ونسخُ أجهزتك الأخرى المحلية لا تُمسّ.\n\nلا يمكن التراجع. أتتابع؟"
-      : "سيُحذف من **هذا الجهاز وحده** كل إعداداتك وتصحيحاتك وقواعدك الذكية ونتيجة الفحص.\n\n" +
-        "وما رُفع سابقًا إلى مساحة مزامنة حسابك في جوجل **يبقى هناك كما هو**،\n" +
+      : "سيُحذف من هذا الجهاز وحده كل إعداداتك وتصحيحاتك وقواعدك الذكية ونتيجة الفحص.\n\n" +
+        "وما رُفع سابقًا إلى مساحة مزامنة حسابك في جوجل يبقى هناك كما هو،\n" +
         "ويعود إلى هذا الجهاز كاملًا متى أعدتَ تفعيل المزامنة.\n" +
         "ولمحوه معه: ألغِ هذه الرسالة، وعلّم «وامسح أيضًا ما رُفع إلى حسابك في جوجل».\n\n" +
         "لا يمكن التراجع. أتتابع؟";
@@ -1266,7 +1266,7 @@
     // أُزيل الزرّ المكرر بقرار المالك 2026-08-16
     if ($("termFilter")) $("termFilter").addEventListener("change", renderTerms);
     $("clearAllOv").addEventListener("click", function () {
-      if (!confirm("حذف كل كلماتك المحفوظة (والقواعد الذكية المستوردة)؟")) return;
+      if (!confirm("حذف كل تصحيحاتك وقواعدك الذكية؟ لا يمكن التراجع.")) return;
       set({ cml_overrides: {}, cml_user_patterns: [] }, function () { renderTerms(); flash($("termsStatus"), "حُذفت."); });
     });
 

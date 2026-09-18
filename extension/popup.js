@@ -41,7 +41,7 @@
           setBadge();
         });
       })
-      .catch(function () { status.textContent = "تعذّر تحميل قائمة اللغات / could not load languages"; });
+      .catch(function () { status.textContent = "تعذّر تحميل قائمة اللغات."; });
   }
 
   langSel.addEventListener("change", function () {
@@ -60,14 +60,14 @@
   });
   saveBtn.addEventListener("click", function () {
     var a = (src.value || "").trim(), b = (dst.value || "").trim();
-    if (!a || !b) { status.textContent = "اكتب الكلمتين / fill both fields"; return; }
+    if (!a || !b) { status.textContent = "املأ الحقلين."; return; }
     chrome.storage.local.get(["cml_overrides"], function (s) {
       var ov = s.cml_overrides || {};
       ov[current] = ov[current] || {};
       ov[current][a] = b;
       chrome.storage.local.set({ cml_overrides: ov }, function () {
-        if (chrome.runtime.lastError) { status.textContent = "تعذّر الحفظ / save failed"; return; } // لا نجاحَ معلَنًا بعد كتابةٍ فاشلة
-        status.textContent = "تم الحفظ ✓ / saved";
+        if (chrome.runtime.lastError) { status.textContent = "تعذّر الحفظ."; return; } // لا نجاحَ معلَنًا بعد كتابةٍ فاشلة
+        status.textContent = "تم الحفظ ✓";
         src.value = ""; dst.value = "";
         setTimeout(function () { status.textContent = ""; }, 2500);
       });

@@ -8,6 +8,36 @@
          cml_sync_enabled, cml_sync_state (+ في مساحة sync: cml_syncmeta وcml_syncd_*). */
 (function () {
   "use strict";
+
+  // ---------- جمعُ المعدود العربي ----------
+  // كانت الرسائل تُلصق العددَ بتمييزٍ واحد («N تصحيحًا») وهو لا يصحّ إلا للأعداد 11–99.
+  // القاعدة: 0 ← جمع، 1 ← مفرد + واحد/واحدة، 2 ← مثنى، 3–10 ← جمع، 11–99 ← مفرد منصوب،
+  // والمئات والألوف الصحيحة (100، 200، 1000…) وما شابه ← مفرد مجرور. تُقاس على آخر رقمين.
+  // forms = { s: مفرد، d: مثنى مرفوع، o: مثنى مجرور/منصوب، p: جمع، a: مفرد منصوب، f: مؤنث؟ }
+  // g=true حين يقع المعدود بعد حرف جرّ أو مضافًا إليه أو مفعولًا («بعد قراءة ملفين»، «قرأ ملفين»).
+  // لا تُلحق المعدودَ صفةٌ في الرسائل («N نصًّا آخر») لأنها تحتاج مطابقةً ثانية؛ أعِد صياغة الجملة بدلها.
+  function arCount(n, f, g) {
+    n = Number(n) || 0;
+    var m = n % 100;
+    if (n === 0) return "0 " + f.p;
+    if (n === 1) return f.s + (f.f ? " واحدة" : " واحد");
+    if (n === 2) return g ? f.o : f.d;
+    if (m >= 3 && m <= 10) return n + " " + f.p;
+    if (m >= 11 && m <= 99) return n + " " + f.a;
+    return n + " " + f.s;
+  }
+  var N = {
+    file:   { s: "ملف", d: "ملفان", o: "ملفين", p: "ملفات", a: "ملفًا" },
+    text:   { s: "نصّ", d: "نصّان", o: "نصّين", p: "نصوص", a: "نصًّا" },
+    rule:   { s: "قاعدة", d: "قاعدتان", o: "قاعدتين", p: "قواعد", a: "قاعدةً", f: true },
+    spot:   { s: "موضع", d: "موضعان", o: "موضعين", p: "مواضع", a: "موضعًا" },
+    elem:   { s: "عنصر", d: "عنصران", o: "عنصرين", p: "عناصر", a: "عنصرًا" },
+    fix:    { s: "تصحيح", d: "تصحيحان", o: "تصحيحين", p: "تصحيحات", a: "تصحيحًا" },
+    line:   { s: "سطر", d: "سطران", o: "سطرين", p: "أسطر", a: "سطرًا" },
+    sec:    { s: "ثانية", d: "ثانيتان", o: "ثانيتين", p: "ثوانٍ", a: "ثانيةً", f: true },
+    result: { s: "نتيجة", d: "نتيجتان", o: "نتيجتين", p: "نتائج", a: "نتيجةً", f: true },
+    sheet:  { s: "ملف تصميم", d: "ملفا تصميم", o: "ملفي تصميم", p: "ملفات تصميم", a: "ملفَّ تصميم" },
+  };
   var $ = function (id) { return document.getElementById(id); };
   var LANG = "ar"; // Arabic-only build
   var KEYS = CMLConst.RESET_KEYS;
@@ -99,9 +129,9 @@
 
     if (opts.missing) inp.placeholder = "اكتب الترجمة…";
 
-    var save = document.createElement("button"); save.textContent = opts.missing ? "ترجم" : "حفظ";
+    var save = document.createElement("button"); save.textContent = opts.missing ? "ترجمة" : "حفظ";
     save.dataset.en = en;
-    save.setAttribute("aria-label", (opts.missing ? "ترجم: " : "حفظ ترجمة: ") + en); // 44 زرًّا اسمها «حفظ» لا يميّزها قارئ الشاشة
+    save.setAttribute("aria-label", (opts.missing ? "ترجمة: " : "حفظ ترجمة: ") + en); // 44 زرًّا اسمها «حفظ» لا يميّزها قارئ الشاشة
     save.addEventListener("click", function () {
       get(["cml_overrides", "cml_user_patterns", "cml_scan_result"], function (s2) {
         var o = s2.cml_overrides || {}; o[LANG] = o[LANG] || {};
@@ -211,11 +241,11 @@
       }
       box.classList.remove("hidden");
       $("reconLines").innerHTML =
-        "• <b>" + r.same.length + "</b> مطابقة لنصّ القاموس حرفًا بحرف — لا أثر لها، وحذفُها ينظّف قائمتك ويجعلك ترى أي تحسين لاحق في القاموس.<br>" +
-        "• <b>" + r.diff.length + "</b> تختلف عن القاموس — <b>هذه ترجمتك أنت وهي الظاهرة</b>. راجعها إن شئت، وأبقِ ما تفضّله.<br>" +
-        "• <b>" + r.only.length + "</b> ليست في القاموس أصلًا — ترجمتك وحدها، ولا يمسّها شيء.";
+        "• ما يطابق نصّ القاموس حرفًا بحرف: <b>" + arCount(r.same.length, N.fix) + "</b> — لا أثر له، وحذفُه ينظّف قائمتك ويجعلك ترى أي تحسين لاحق في القاموس.<br>" +
+        "• ما يختلف عن القاموس: <b>" + arCount(r.diff.length, N.fix) + "</b> — <b>هذه ترجمتك أنت وهي الظاهرة</b>. راجعها إن شئت، وأبقِ ما تفضّله.<br>" +
+        "• ما ليس في القاموس أصلًا: <b>" + arCount(r.only.length, N.fix) + "</b> — ترجمتك وحدها، ولا يمسّها شيء.";
       $("reconDropSame").disabled = !r.same.length;
-      $("reconDropSame").textContent = r.same.length ? "احذف المطابقة (" + r.same.length + ")" : "لا مطابقة";
+      $("reconDropSame").textContent = r.same.length ? "حذف المطابقة (" + r.same.length + ")" : "لا مطابقة";
       $("reconShowDiff").disabled = !r.diff.length;
     });
   }
@@ -225,7 +255,7 @@
       var o = s.cml_overrides || {}, ov = o[LANG] || {};
       var r = reconcile(ov);
       if (!r.same.length) return;
-      if (!confirm("سيُحذف " + r.same.length + " تصحيحًا مطابقًا لنصّ القاموس حرفًا بحرف.\n\n" +
+      if (!confirm("سيُحذف من تصحيحاتك ما يطابق نصّ القاموس حرفًا بحرف (" + arCount(r.same.length, N.fix) + ").\n\n" +
         "لن يتغيّر شيء فيما تراه على الشاشة — القاموس يعطي النصّ نفسه.\n" +
         "والفائدة أن ترى أي تحسين لاحق في هذه النصوص.\n\nأتتابع؟")) return;
       r.same.forEach(function (k) { delete ov[k]; });
@@ -233,7 +263,7 @@
       set({ cml_overrides: o }, function (err) {
         if (err) { flash($("termsStatus"), "تعذّر الحفظ."); return; }
         renderTerms(); renderRecon();
-        flash($("termsStatus"), "حُذف " + r.same.length + " تصحيحًا مطابقًا ✓ (ما تراه على الشاشة لم يتغيّر)");
+        flash($("termsStatus"), "حُذف ما يطابق القاموس (" + arCount(r.same.length, N.fix) + ") ✓ (ما تراه على الشاشة لم يتغيّر)");
       });
     });
   }
@@ -325,12 +355,12 @@
       if (missing.length) {
         group(list, "غير المترجَم من الفحص (" + missing.length + (missTrunc ? " من " + missTotal : "") + ") — اكتب الترجمة واضغط «ترجم»");
         missing.forEach(function (k) { list.appendChild(termRow(k, "", { mine: false, missing: true, tag: "غير مترجَم" })); });
-        if (missTrunc) more("وهناك " + missTrunc + " نصًّا آخر — ضيّق البحث، أو ترجمها دفعةً بأزرار «تنزيل أمر الترجمة» ثم «استيراد الترجمات» أدناه.");
+        if (missTrunc) more("وهناك أيضًا " + arCount(missTrunc, N.text) + " لم تُعرض — ضيّق البحث، أو ترجمها دفعةً بأزرار «تنزيل أمر الترجمة» ثم «استيراد الترجمات» أدناه.");
       }
       if (hits.length) {
         group(list, "قاموس الإضافة (" + hits.length + (truncated ? " من " + (hits.length + truncated) : "") + ")");
         hits.forEach(function (k) { list.appendChild(termRow(k, BASE[k], { mine: false, tag: "القاموس" })); });
-        if (truncated) more("وهناك " + truncated + " نتيجة أخرى — ضيّق البحث لتراها.");
+        if (truncated) more("وهناك أيضًا " + arCount(truncated, N.result) + " لم تُعرض — ضيّق البحث لتراها.");
       }
       if (filter === "all" && !searching && q.length === 1) {
         more("اكتب حرفين على الأقل للبحث في قاموس الإضافة.");
@@ -395,7 +425,7 @@
         lang: LANG, count: arr.length, terms: arr,
       }, null, 2));
 
-      flash($("termsStatus"), "صُدِّر " + arr.length.toLocaleString("en") + " نصًّا" +
+      flash($("termsStatus"), "صُدِّر " + arCount(arr.length, N.text) +
         (untranslated ? " (منها " + untranslated.toLocaleString("en") + " غير مترجَم من الفحص)" : "") + " ✓");
     });
   }
@@ -440,7 +470,7 @@
       // «حذف» و«مشاركة» — فاستيراده من مصدر غير موثوق خطرٌ حقيقي. والمستخدم يستورد
       // ملفًا ردّه عليه نموذجٌ لغوي، فمن حقّه أن يرى ماذا يدخل قبل أن يدخل.
       var sample = keys.slice(0, 5).map(function (k) { return "  " + k + "  ←  " + pairs[k]; }).join("\n");
-      var msg = "سيُستورد " + keys.length + " سطرًا.\n\nأول خمسة:\n" + sample +
+      var msg = "سيُستورد " + arCount(keys.length, N.line) + ".\n\nأول خمسة:\n" + sample +
         "\n\n⚠ ملف الترجمة يغيّر نصوص أزرار claude.ai وتسمياتها — فلا تستورد إلا من مصدر تثق به.\n\nأتتابع؟";
       if (!confirm(msg)) { flash(statusEl, "أُلغي الاستيراد."); return; }
 
@@ -495,10 +525,10 @@
         set(patch, function (err) {
           if (err) { flash(statusEl, "تعذّر الحفظ — امتلأت مساحة التخزين أو مُنعت الكتابة. لم يُحفظ شيء."); return; }
           renderTerms();
-          var msg = "تم استيراد " + (nPlain + nPat) + " ✓";
-          if (nPat) msg += " (منها " + nPat + " قاعدة ذكية)";
-          if (nSkip) msg += " — وأُهملت " + nSkip + " لعدم صلاحيتها قاعدةً ذكية";
-          if (nCapped) msg += " — و" + nCapped + " تجاوزت الحدّ الأقصى فلم تُستورد";
+          var msg = "تم استيراد " + arCount(nPlain + nPat, N.line, true) + " ✓";
+          if (nPat) msg += " (منها قواعد ذكية: " + arCount(nPat, N.rule) + ")";
+          if (nSkip) msg += " — وأُهمل ما لا يصلح قاعدةً ذكية (" + arCount(nSkip, N.line) + ")";
+          if (nCapped) msg += " — وتجاوز الحدَّ الأقصى فلم يُستورد: " + arCount(nCapped, N.line);
           flash(statusEl, msg);
         });
       });
@@ -513,7 +543,7 @@
     var varSection = varKeys.length
       ? [
           "",
-          "### نصوص فيها متغيّرات (" + varKeys.length + " سطرًا)",
+          "### نصوص فيها متغيّرات (" + arCount(varKeys.length, N.line) + ")",
           "هذه تتحول عندي إلى قواعد ذكية تعمل مع كل القيم، فالتزم بها:",
           "- انسخ كل متغيّر بين قوسين معقوفين **كما هو حرفيًّا** ({count}، {name}…) ولا تترجمه ولا تغيّر اسمه.",
           "- ضع المتغيّر في موضعه الطبيعي من الجملة العربية.",
@@ -546,7 +576,7 @@
       "احرص أن يكون حقل en منسوخًا حرفيًّا بلا تغيير في علامات الترقيم أو المسافات،",
       "وأن يكون عدد العناصر مساويًا لمجموع الأسطر أدناه (" + (keys.length + varKeys.length) + ").",
       "",
-      "### نصوص ثابتة (" + keys.length + " سطرًا)",
+      "### نصوص ثابتة (" + arCount(keys.length, N.line) + ")",
       "----------------------------------------",
       keys.join("\n"),
       varSection,
@@ -602,7 +632,7 @@
       // اشتراطُ وجود النبض كان يترك الزر معطّلًا إلى الأبد فلا يبدأ فحصٌ جديد أبدًا.
       if (!r.at || Date.now() - r.at > CMLConst.HEARTBEAT_STALL_MS) {
         cnt.textContent = "انقطع الفحص";
-        st.textContent = "توقّف بعد قراءة " + (r.fetched || 0) + " ملفًا — غالبًا أُغلق تبويب claude.ai أو أُعيد تحميل الإضافة. افتح claude.ai وحدّث الصفحة ثم أعد الفحص.";
+        st.textContent = "توقّف بعد قراءة " + arCount((r.fetched || 0), N.file, true) + " — غالبًا أُغلق تبويب claude.ai أو أُعيد تحميل الإضافة. افتح claude.ai وحدّث الصفحة ثم أعد الفحص.";
         $("cancelScan").classList.add("hidden");
         $("startScan").disabled = false;
         if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
@@ -613,7 +643,7 @@
       var pct = done + left > 0 ? Math.min(99, Math.round((done / (done + left)) * 100)) : 0;
       // لا تدهس رسالةً وامضة (تأكيد استيراد أو خطأ حفظ) — وارفع صنف الخطأ عن سطر التقدّم
       if (!st.dataset.flashing) {
-        st.textContent = "التقدّم نحو " + pct + "٪ — قرأ " + done + " ملفًا، ووجد " + (r.found || 0) + " نصًّا…";
+        st.textContent = "التقدّم نحو " + pct + "٪ — قرأ " + arCount(done, N.file, true) + "، ووجد " + arCount((r.found || 0), N.text, true) + "…";
         st.classList.remove("err");
       }
       // صفحة إعدادات فُتحت من جديد أثناء فحصٍ جارٍ كانت تعرض الزر مفعّلًا، فضغطُه يمسح
@@ -627,7 +657,7 @@
     if (r.status === "error" || r.status === "cancelled") {
       cnt.textContent = r.status === "cancelled" ? "أُوقف الفحص" : "تعذّر الفحص";
       st.textContent = r.status === "cancelled"
-        ? "أُوقف بعد قراءة " + (r.fetched || 0) + " ملفًا. اضغط «ابدأ الفحص» للإعادة."
+        ? "أُوقف بعد قراءة " + arCount((r.fetched || 0), N.file, true) + ". اضغط «بدء الفحص» للإعادة."
         : (r.error || "حدث خطأ.");
       $("startScan").disabled = false;
       if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
@@ -636,17 +666,17 @@
     // done
     if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
     $("startScan").disabled = false;
-    $("startScan").textContent = "أعد الفحص";
+    $("startScan").textContent = "إعادة الفحص";
     var nPlain = (r.list || []).length, nVars = (r.varList || []).length;
-    cnt.textContent = r.missing ? (r.missing + " نصًّا غير مترجَم") : "كل شيء مترجَم ✓";
+    cnt.textContent = r.missing ? ("غير المترجَم: " + arCount(r.missing, N.text)) : "كل شيء مترجَم ✓";
     // لا تدهس رسالة flash نشطة (تأكيد استيراد مثلًا) — الملخص يبقى متاحًا في العدّاد
     if (!st.dataset.flashing) {
       st.classList.remove("err");
-      var msg = "فُحص " + (r.fetched || 0) + " ملفًا و" + (r.found || 0) + " نصًّا في " + (r.seconds || 0) + " ثانية.";
-      if (nVars) msg += " منها " + nVars + " نصًّا متغيّرًا يصير قواعد ذكية.";
+      var msg = "فُحص " + arCount((r.fetched || 0), N.file) + " و" + arCount((r.found || 0), N.text) + " في " + arCount((r.seconds || 0), N.sec, true) + ".";
+      if (nVars) msg += " منها " + arCount(nVars, N.text) + " بمتغيّرات تصير قواعد ذكية.";
       if (r.capped) msg += " (عُرض أول 4000 نصّ)";
       // إخفاق الجلب يعني نتيجةً ناقصة — والسكوت عنه يجعل «تمّ» يبدو اكتمالًا وليس به
-      if (r.failed) msg += " ⚠ تعذّر جلب " + r.failed + " ملفًا، فالنتيجة ناقصة — أعد الفحص.";
+      if (r.failed) msg += " ⚠ تعذّر جلب " + arCount(r.failed, N.file, true) + "، فالنتيجة ناقصة — أعد الفحص.";
       msg += r.missing
         ? " غيرُ المترجَم في «قاموس التعريب» أدناه — النِّسَب والقائمة وأدوات الترجمة."
         : " المصدر مطابق لأحدث نسخة من الموقع ✓";
@@ -670,7 +700,7 @@
         $("scanCount").textContent = "لم يصل الطلب";
         $("scanStatus").innerHTML =
           "لم يستجب أي تبويب. الأرجح أن تبويب claude.ai مفتوح منذ ما قبل تحديث الإضافة، فلم يعد متصلًا بها. " +
-          "<b>الحل:</b> افتح تبويب claude.ai واضغط <b>Ctrl+Shift+R</b> (تحديث كامل) وانتظر اكتمال تحميل الصفحة، ثم عُد هنا واضغط «ابدأ الفحص». " +
+          "<b>الحل:</b> افتح تبويب claude.ai واضغط <b>Ctrl+Shift+R</b> (تحديث كامل) وانتظر اكتمال تحميل الصفحة، ثم عُد هنا واضغط «بدء الفحص». " +
           "وإن لم يكن التبويب مفتوحًا أصلًا فافتحه أولًا.";
       }
     });
@@ -747,7 +777,7 @@
           $("startScan").disabled = false;
           $("cancelScan").classList.add("hidden");
           $("scanCount").textContent = "لم يُجرَ فحص بعد";
-          $("scanStatus").textContent = "أُوقف الفحص. اضغط «ابدأ الفحص» متى شئت.";
+          $("scanStatus").textContent = "أُوقف الفحص. اضغط «بدء الفحص» متى شئت.";
         });
       });
     }, 2000);
@@ -759,7 +789,7 @@
       var plain = (r && r.list) || [], vars = (r && r.varList) || [];
       if (!plain.length && !vars.length) { flash($("scanStatus"), "لا توجد نصوص غير مترجَمة لتنزيلها."); return; }
       download("أمر-ترجمة-كلود-جديد.txt", buildPrompt(plain, vars), "text/plain;charset=utf-8");
-      flash($("scanStatus"), "نُزّل الملف (" + (plain.length + vars.length) + " نصًّا) وفيه الأمر كاملًا — ألصقه في claude.ai.");
+      flash($("scanStatus"), "نُزّل الملف (" + arCount((plain.length + vars.length), N.text) + ") وفيه الأمر كاملًا — ألصقه في claude.ai.");
     });
   }
 
@@ -808,8 +838,8 @@
         return;
       }
       var d = new Date(r.at || 0);
-      box.textContent = "الاتجاه مضبوط من الموقع: " + (r.flipped || 0) + " موضعًا مُعكَسًا من " +
-        (r.sources || 0) + " ملفَّ تصميم (" + Math.round((r.bytes || 0) / 1024) + " كيلوبايت) — آخر ضبطٍ " +
+      box.textContent = "الاتجاه مضبوط من الموقع — المعكوس: " + arCount((r.flipped || 0), N.spot) + " من " +
+        arCount((r.sources || 0), N.sheet, true) + " (" + Math.round((r.bytes || 0) / 1024) + " كيلوبايت) — آخر ضبطٍ " +
         d.toLocaleDateString("ar-u-nu-latn") + " " + d.toLocaleTimeString("ar-u-nu-latn", { hour: "2-digit", minute: "2-digit" }) + ".";
     });
   }
@@ -824,13 +854,13 @@
       // بدون هذا المخرج تبقى الصفحة على «جارٍ الفحص…» أبدًا والزر معطّلًا بلا استرداد.
       if (!r.at || Date.now() - r.at > CMLConst.HEARTBEAT_STALL_MS) {
         cnt.textContent = "انقطع الفحص";
-        st.textContent = "توقّف بعد قراءة " + (r.fetched || 0) + " ملفًا — غالبًا أُغلق تبويب claude.ai أو أُعيد تحميل الإضافة. افتح claude.ai وحدّث الصفحة ثم أعد الفحص.";
+        st.textContent = "توقّف بعد قراءة " + arCount((r.fetched || 0), N.file, true) + " — غالبًا أُغلق تبويب claude.ai أو أُعيد تحميل الإضافة. افتح claude.ai وحدّث الصفحة ثم أعد الفحص.";
         $("startRtlDoc").disabled = false;
         if (rtlDocTimer) { clearInterval(rtlDocTimer); rtlDocTimer = null; }
         return;
       }
       cnt.textContent = "جارٍ الفحص…";
-      st.textContent = "قرأ " + (r.fetched || 0) + " ملف تنسيق…";
+      st.textContent = "قرأ " + arCount(r.fetched || 0, N.sheet, true) + "…";
       // صفحة فُتحت من جديد أثناء فحص جارٍ: الزر معطَّل والاستطلاع مستأنَف — كالفحص أعلاه
       $("startRtlDoc").disabled = true;
       if (!rtlDocTimer) { rtlDocWaited = 0; rtlDocTimer = setInterval(pollRtlDoc, 1000); }
@@ -845,29 +875,29 @@
       return;
     }
     // done
-    $("startRtlDoc").textContent = "أعد فحص الاتجاه";
+    $("startRtlDoc").textContent = "إعادة فحص الاتجاه";
     var unc = r.uncovered || 0;
     var shown = (r.list || []).length;
     if (unc) {
-      cnt.textContent = unc + " قاعدة تنسيقٍ لم تُعكس بعد";
+      cnt.textContent = "لم يُعكس بعد: " + arCount(unc, N.rule);
     } else {
       cnt.textContent = "✓ الاتجاه مضبوط بالكامل";
       cnt.style.color = "var(--ok)";
     }
-    var msg = "فُحص " + (r.files || 0) + " ملفًا وفيها " + (r.rules || 0) + " قاعدة، منها " +
-      (r.physical || 0) + " قاعدةً تذكر يمينًا أو يسارًا: المُعالَج " + (r.covered || 0) +
+    var msg = "فُحص " + arCount((r.files || 0), N.file) + " وفيها " + arCount((r.rules || 0), N.rule) + "، منها ما يذكر يمينًا أو يسارًا (" +
+      arCount((r.physical || 0), N.rule) + "): المُعالَج " + (r.covered || 0) +
       " وغيرُ المغطّى " + unc + (unc && shown < unc ? " (يُعرض أول " + shown + ")" : "") +
-      "، في " + (r.seconds || 0) + " ثانية.";
+      "، في " + arCount((r.seconds || 0), N.sec, true) + ".";
     // الصنفان يفترقان (تشخيص حي): 404 «إشارات وهمية» — أسماءٌ تشبه الملفات داخل نصوص
     // الحزم (عمال بمسارات أخرى، أمثلة رسائل مصرِّف) لا ملفاتُ موقع، وإعادةُ الفحص لن
     // «تصلحها» أبدًا فلا تُعدّ نقصًا ولا تستحق ⚠. أما إخفاق الشبكة الباقي بعد جولة
     // الإعادة الداخلية فهو النقص الحق الذي يستحق التصريح والإعادة.
-    if (r.failed) msg += " ⚠ تعذّر جلب " + r.failed + " ملفًا (شبكة) رغم إعادة المحاولة، فالنتيجة ناقصة — أعد الفحص.";
+    if (r.failed) msg += " ⚠ تعذّر جلب " + arCount(r.failed, N.file, true) + " (شبكة) رغم إعادة المحاولة، فالنتيجة ناقصة — أعد الفحص.";
     if (r.ghosts) msg += " وتجاهل " + r.ghosts + " إشارةً وهمية (أسماء تشبه الملفات داخل النصوص لا ملفات حقيقية — أمر طبيعي).";
     // الأنماط السطرية تُذكر ولا تُعدّ نقصًا: تركُها مبدأٌ في المحرّك لا سهوٌ — فالمحرّك
     // يقلب أصناف التنسيق وحدها، والمواضع التي تحسبها سكربتات الموقع بنفسها لا تُمسّ.
-    msg += " وفي التنسيقات التي يحسبها الموقع بنفسه " + (r.inlinePhysical || 0) + " قاعدةً من " +
-      (r.inlineChecked || 0) + " عنصرًا مفحوصًا — وهذه لا تمسّها الإضافة عمدًا.";
+    msg += " وفي التنسيقات التي يحسبها الموقع بنفسه فُحص " + arCount((r.inlineChecked || 0), N.elem) + "، وفي " +
+      arCount((r.inlinePhysical || 0), N.rule, true) + " منها يمينٌ أو يسار — وهذه لا تمسّها الإضافة عمدًا.";
     // لا تدهس رسالة flash نشطة (تأكيد تنزيل مثلًا) — الملخص يبقى متاحًا في العدّاد
     if (!st.dataset.flashing) st.textContent = msg;
     if (!box) return;
@@ -896,7 +926,7 @@
         $("rtlDocCount").textContent = "لم يصل الطلب";
         $("rtlDocStatus").innerHTML =
           "لم يستجب أي تبويب. الأرجح أن تبويب claude.ai مفتوح منذ ما قبل تحديث الإضافة، فلم يعد متصلًا بها. " +
-          "<b>الحل:</b> افتح تبويب claude.ai واضغط <b>Ctrl+Shift+R</b> (تحديث كامل) وانتظر اكتمال تحميل الصفحة، ثم عُد هنا واضغط «ابدأ فحص الاتجاه». " +
+          "<b>الحل:</b> افتح تبويب claude.ai واضغط <b>Ctrl+Shift+R</b> (تحديث كامل) وانتظر اكتمال تحميل الصفحة، ثم عُد هنا واضغط «بدء فحص الاتجاه». " +
           "وإن لم يكن التبويب مفتوحًا أصلًا فافتحه أولًا.";
       }
     });
@@ -1074,7 +1104,7 @@
       if (err) { flash($("syncStatus"), "تعذّر الحفظ."); return; }
       renderSync();
       // الصدق التزام العقد: الإيقاف محليّ ولا يمسّ الطرف البعيد — ونقولها للمستخدم
-      flash($("syncStatus"), "أُوقفت المزامنة على هذا الجهاز — وما رُفع سابقًا باقٍ في حسابك، ومسحُه بزرّ «امسح ما رُفع من حسابك» وهو ظاهرٌ الآن ولا يحتاج إعادة تفعيل.");
+      flash($("syncStatus"), "أُوقفت المزامنة على هذا الجهاز — وما رُفع سابقًا باقٍ في حسابك، ومسحُه بزرّ «مسح ما رُفع من حسابك» وهو ظاهرٌ الآن ولا يحتاج إعادة تفعيل.");
     });
   }
 
@@ -1199,7 +1229,7 @@
       });
     }
     if (!also) {
-      local(" وما رُفع إلى حسابك باقٍ هناك — امسحه بزرّ «امسح ما رُفع من حسابك» في قسم المزامنة.");
+      local(" وما رُفع إلى حسابك باقٍ هناك — امسحه بزرّ «مسح ما رُفع من حسابك» في قسم المزامنة.");
       return;
     }
     // البعيد أولًا: لو حُذف المحلي أوّلًا ثم أخفق المسح، ضاع علمُ المزامنة والدفاتر

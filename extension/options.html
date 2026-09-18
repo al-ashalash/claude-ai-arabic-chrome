@@ -145,7 +145,7 @@
           الإضافة على claude.ai</b> — لا ترجمة ولا اتجاه — حتى تمنحها الإذن بضغطة واحدة:
         </p>
         <div class="btnrow" style="margin-top:0">
-          <button class="primary" id="ffPermGrant">امنح الإذن لموقع claude.ai</button>
+          <button class="primary" id="ffPermGrant">منح الإذن لموقع claude.ai</button>
         </div>
       </div>
       <div class="status hidden" id="ffPermStatus" role="status" aria-live="polite" style="margin:0 0 8px"></div>
@@ -173,12 +173,12 @@
         حيث تجد النِّسَب والقائمة وأدوات الترجمة.
       </p>
       <p class="desc warn">
-        افتح تبويب <b>claude.ai</b> واتركه مفتوحًا، ثم اضغط «ابدأ الفحص». يستغرق دقيقة أو دقيقتين.
+        افتح تبويب <b>claude.ai</b> واتركه مفتوحًا، ثم اضغط «بدء الفحص». يستغرق دقيقة أو دقيقتين.
       </p>
       <div class="row" style="border:none;padding-top:2px">
         <span class="count" id="scanCount">لم يُجرَ فحص بعد</span>
         <span style="display:flex;gap:8px">
-          <button class="primary" id="startScan">ابدأ الفحص</button>
+          <button class="primary" id="startScan">بدء الفحص</button>
           <button class="btn-danger hidden" id="cancelScan">إيقاف</button>
         </span>
       </div>
@@ -207,7 +207,7 @@
       <div class="status" id="rtlEngineStatus" role="status" aria-live="polite"></div>
       <p class="desc" id="rtlLiveInfo" style="margin-top:6px"></p>
       <div class="btnrow">
-        <button id="rtlLiveRebuild" class="ghost">أعد ضبط الاتجاه من الموقع الآن</button>
+        <button id="rtlLiveRebuild" class="ghost">إعادة ضبط الاتجاه من الموقع</button>
       </div>
 
       <h3 style="font-size:14px;margin:10px 0 4px;padding-top:12px;border-top:1px solid var(--line)">فحص الاتجاه</h3>
@@ -216,11 +216,11 @@
         «فحص الموقع» أعلاه، لكنه للاتجاه لا للترجمة.
       </p>
       <p class="desc warn">
-        افتح تبويب <b>claude.ai</b> واتركه مفتوحًا، ثم اضغط «ابدأ فحص الاتجاه». يستغرق ثوانيَ معدودة.
+        افتح تبويب <b>claude.ai</b> واتركه مفتوحًا، ثم اضغط «بدء فحص الاتجاه». يستغرق ثوانيَ معدودة.
       </p>
       <div class="row" style="border:none;padding-top:2px">
         <span class="count" id="rtlDocCount">لم يُجرَ فحص بعد</span>
-        <button class="primary" id="startRtlDoc">ابدأ فحص الاتجاه</button>
+        <button class="primary" id="startRtlDoc">بدء فحص الاتجاه</button>
       </div>
       <div class="status" id="rtlDocStatus" role="status" aria-live="polite"></div>
       <div class="hidden" id="rtlDocBox">
@@ -286,9 +286,9 @@
         </p>
         <div class="desc" id="reconLines" style="line-height:2"></div>
         <div class="btnrow" style="margin-top:8px">
-          <button id="reconShowDiff">راجع المختلفة</button>
-          <button id="reconDropSame">احذف المطابقة</button>
-          <button class="ghost" id="reconDismiss">أغلق</button>
+          <button id="reconShowDiff">مراجعة المختلفة</button>
+          <button id="reconDropSame">حذف المطابقة</button>
+          <button class="ghost" id="reconDismiss">إغلاق</button>
         </div>
         <p class="desc" style="margin-top:8px;color:var(--mut)">
           لا يُحذف شيء إلا بضغطك. وقبل أي حذف، صدّر نسخةً من «تصدير تصحيحاتك فقط» أدناه.
@@ -381,7 +381,7 @@
               عليه ما لم تفعّل عبارة مرور المزامنة في كروم نفسه.</li>
             <li><b>ما لا يُرفع أبدًا:</b> إعداداتك — تبقى لكل جهاز، ولا نتائج الفحص،
               ولا شيء من محتواك ولا محادثاتك.</li>
-            <li><b>الإيقاف لا يمسح ما رُفع</b> — ولذلك زرُّ «امسح ما رُفع من حسابك»
+            <li><b>الإيقاف لا يمسح ما رُفع</b> — ولذلك زرُّ «مسح ما رُفع من حسابك»
               ظاهرٌ في الحالتين، مفعّلةً كانت المزامنة أو متوقّفة، مستقلًّا عن زرّ الإيقاف.</li>
             <!-- السقف يُقال قبل الموافقة لا بعد أول فيضان: مقيسًا — 200 تصحيح نحو 19.7
                  كيلوبايت، و400 نحو 39.6، و600 نحو 59.4، والسقف 92 (SYNC_TOTAL_BYTES). -->
@@ -391,7 +391,7 @@
               ويبقى كلُّ ما عندك محفوظًا على جهازك سليمًا كما هو، وتقول لك هذه الصفحة ذلك صراحةً.</li>
           </ul>
           <div class="btnrow" style="margin-top:0">
-            <button class="primary" id="syncConfirm">أوافق — فعّل المزامنة</button>
+            <button class="primary" id="syncConfirm">موافقة وتفعيل المزامنة</button>
             <button class="ghost" id="syncCancel">إلغاء</button>
           </div>
         </div>
@@ -416,7 +416,7 @@
            عند كل رسم، لا من الحال المحلية التي قد تكذب. -->
       <div id="syncWipeBox" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
         <div class="btnrow" style="margin-top:0">
-          <button class="btn-danger" id="syncWipeBtn">امسح ما رُفع من حسابك</button>
+          <button class="btn-danger" id="syncWipeBtn">مسح ما رُفع من حسابك</button>
         </div>
         <p class="desc" id="syncWipeNote" style="margin-top:8px">…</p>
       </div>
@@ -437,7 +437,7 @@
       <label class="engopt" style="border-top:none;padding-top:2px">
         <input type="checkbox" id="resetWipeSync">
         <span><b>وامسح أيضًا ما رُفع إلى حسابك في جوجل</b>
-          <span class="why">يُمحى المرفوع أولًا بالطريقة نفسها التي يعمل بها زرّ «امسح ما رُفع من حسابك»؛ فإن تعذّر لم تُعَد الضبط ولم يُحذف من جهازك شيء. ونسخُ أجهزتك الأخرى المحلية لا تُمسّ.</span></span>
+          <span class="why">يُمحى المرفوع أولًا بالطريقة نفسها التي يعمل بها زرّ «مسح ما رُفع من حسابك»؛ فإن تعذّر لم تُعَد الضبط ولم يُحذف من جهازك شيء. ونسخُ أجهزتك الأخرى المحلية لا تُمسّ.</span></span>
       </label>
       <div class="row" style="border:none">
         <label>إعادة ضبط كل الإعدادات</label>

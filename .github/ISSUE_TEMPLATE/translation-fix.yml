@@ -1,0 +1,48 @@
+name: تصحيح ترجمة
+description: نصٌّ في واجهة claude.ai تُرجم خطأً أو لم يُترجَم — اقترح تصحيحه للجميع
+title: "[ترجمة] "
+labels: ["translation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        شكرًا لك. الحقول الأربعة الأولى هي كل ما نحتاجه لتصحيح النصّ في القاموس المشترك.
+        (للتصحيح الفوري لنفسك: أيقونة الإضافة ← «حفظ الترجمة»، أو صفحة الإعدادات ← تصحيحاتك.)
+  - type: input
+    id: english
+    attributes:
+      label: النصّ الإنجليزي كما يظهر في الموقع
+      description: انسخه حرفيًّا (بالفاصلة العليا ’ والنقاط … إن وُجدت) — به يُطابَق القاموس.
+      placeholder: "Couldn’t save settings. Click Save again."
+    validations:
+      required: true
+  - type: input
+    id: current
+    attributes:
+      label: الترجمة الحالية التي تعرضها الإضافة
+      placeholder: "تعذّر حفظ الإعدادات. انقر «حفظ» مرة أخرى"
+    validations:
+      required: true
+  - type: input
+    id: proposed
+    attributes:
+      label: الترجمة التي تقترحها
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: السبب
+      description: خطأ معنى؟ مصطلح مخالف لبقية الواجهة؟ صياغة؟ أين يظهر النصّ (أي صفحة أو قائمة)؟
+    validations:
+      required: true
+  - type: dropdown
+    id: tried
+    attributes:
+      label: هل جرّبت التصحيح الشخصي في الإضافة؟
+      options:
+        - نعم، ويعمل — وأريده للجميع
+        - نعم، ولم يُطبَّق (اذكر ذلك في السبب)
+        - لا
+    validations:
+      required: true

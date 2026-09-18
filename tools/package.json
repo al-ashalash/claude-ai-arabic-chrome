@@ -1,9 +1,9 @@
 {
-  "name": "claude-mutarjim-toolchain",
+  "name": "claude-ai-arabic-chrome-tools",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "PO/MO + dictionary toolchain for claude-mutarjim. Zero dependencies (pure Node).",
+  "description": "Build, dictionary and PO/MO toolchain for the claude.ai Arabic interface extension. Zero dependencies (pure Node).",
   "scripts": {
     "build": "node build.mjs",
     "export-po": "node json2po.mjs",

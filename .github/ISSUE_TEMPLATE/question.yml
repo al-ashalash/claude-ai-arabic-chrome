@@ -1,0 +1,11 @@
+name: سؤال أو اقتراح
+description: أي شيء ليس تصحيح ترجمة ولا بلاغ خلل
+title: "[سؤال] "
+labels: ["question"]
+body:
+  - type: textarea
+    id: q
+    attributes:
+      label: السؤال أو الاقتراح
+    validations:
+      required: true

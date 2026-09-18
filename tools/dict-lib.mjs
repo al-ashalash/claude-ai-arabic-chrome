@@ -78,8 +78,8 @@ export function catalogToJson(cat, opts = {}) {
       pluralForms: h["Plural-Forms"] || pluralFormsFor(lang),
     },
     _guide: {
-      ar: "أضِف سطرًا داخل strings: \"النص الإنجليزي\": \"العربية\". ثم شغّل تحديث-الإضافة.",
-      en: "Add a line inside strings: \"English\": \"translation\". Then run rebuild.",
+      ar: "أضِف سطرًا داخل strings: \"النص الإنجليزي\": \"العربية\". ثم شغّل node tools/build.mjs.",
+      en: "Add a line inside strings: \"English\": \"translation\". Then run node tools/build.mjs.",
     },
     strings, plurals, notes,
   };

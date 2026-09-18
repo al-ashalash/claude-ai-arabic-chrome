@@ -3,8 +3,9 @@
   "name": "تعريب كلود للويب — واجهة Claude.ai بالعربية (غير رسمي)",
   "short_name": "تعريب كلود للويب",
   "version": "1.0.0",
-  "version_name": "1.0.0 — قاموس 27364 عبارة",
+  "version_name": "1.0.0 — قاموس 27954 عبارة",
   "description": "يعرّب واجهة claude.ai بالاتجاه من اليمين إلى اليسار. مستقل غير رسمي. لا يخزّن محادثاتك ولا يرسل محتواك. المزامنة اختيارية ومتوقّفة.",
+  "homepage_url": "https://github.com/al-ashalash/claude-ai-arabic-chrome",
   "author": "عبدالسلام الشلاش",
   "icons": {
     "16": "icons/icon16.png",

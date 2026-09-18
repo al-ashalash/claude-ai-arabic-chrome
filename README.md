@@ -2,55 +2,60 @@
 
 # تعريب كلود للويب
 
-**إضافة متصفح تعرّض واجهة [claude.ai](https://claude.ai) بالعربية، مع الاتجاه من اليمين لليسار.**
+**إضافة متصفح تعرض واجهة [claude.ai](https://claude.ai) بالعربية، بالاتجاه من اليمين إلى اليسار.**
 
-مشروع مستقل غير رسمي · محليّ بالكامل · صلاحية واحدة (`storage`) · مفتوح المصدر
+مشروع مستقل غير رسمي · محليّ بالكامل · إذن واحد (`storage`) · مفتوح المصدر
 
 ---
 
 ## لماذا؟
 
 واجهة claude.ai تدعم إحدى عشرة لغة رسميًّا، وليست العربية منها. ودعمُ الاتجاه من اليمين
-لليسار ناقص، فالنصّ العربي يُحاذى يسارًا، ويختلّ ترتيبُه إذا خالطته إنجليزيةٌ أو أرقام أو
-شيفرة. هذه الإضافة تسدّ الأمرين معًا: **تترجم الواجهة، وتقلب اتجاهها**.
+إلى اليسار ناقص، فالنصّ العربي يُحاذى يسارًا، ويختلّ ترتيبُه إذا خالطته إنجليزيةٌ أو أرقام أو
+تعليمات برمجية. هذه الإضافة تسدّ الأمرين معًا: **تترجم الواجهة، وتعكس اتجاهها**.
 
 ## ما تفعله
 
 | | |
 |---|---|
-| **ترجمة الواجهة** | قاموس فيه أكثر من **27,300** مفردة، يغطي **96%** من نصوص الموقع (والباقي أسماءُ علاماتٍ ومعرِّفاتٌ تقنية لا تُترجَم) |
-| **قواعد ذكية** | أكثر من **3,100** قاعدة للنصوص المتغيّرة (التواريخ، «قبل ٣ أيام»، «الرسالة ١ من ٢»…) |
-| **صيغ الجمع العربية** | الفئات الست (`zero/one/two/few/many/other`) — لا «٣ محادثة» ولا «١١ محادثات» |
-| **الاتجاه من اليمين لليسار** | قلبُ التخطيط، واتجاهٌ مستقلٌّ لكل فقرة في المحادثة، والشيفرة تبقى من اليسار |
+| **ترجمة الواجهة** | قاموس فيه أكثر من **27,900** مفردة، يغطي نحو **96%** من نصوص الموقع (والباقي أسماءُ علاماتٍ ومعرِّفاتٌ تقنية لا تُترجَم) |
+| **قواعد ذكية** | أكثر من **3,200** قاعدة للنصوص المتغيّرة (التواريخ، «قبل 3 أيام»، «الرسالة 1 من 2»…) |
+| **صيغ الجمع العربية** | الفئات الست (`zero/one/two/few/many/other`) — لا «3 محادثة» ولا «11 محادثات» |
+| **الاتجاه من اليمين إلى اليسار** | عكسُ التخطيط بورقةٍ تُبنى من ملفات تصميم الموقع نفسها وتُعاد كلما تغيّرت، واتجاهٌ مستقلٌّ لكل فقرة في المحادثة، والتعليمات البرمجية تبقى من اليسار |
 | **تصحيح شخصي** | ابحث في القاموس كله وعدّل أي ترجمة لنفسك |
-| **فحص الموقع** | يقرأ ملفات claude.ai العامة ليجد ما استُجدّ ولم يُترجَم بعد |
+| **فحص الموقع وفحص الاتجاه** | بضغطة منك: يقرآن ملفات claude.ai العامة ليجدا ما استُجدّ ولم يُترجَم، وتنسيقاتٍ لم تُعكس بعد |
 
 ## الخصوصية — بدقّة
 
-ليترجم الامتداد تسميةً فلا بدّ أن **يطابقها**، فهو إذن يقرأ نصوص الصفحة أثناء مروره عليها
+لتترجم الإضافةُ تسميةً فلا بدّ أن **يطابقها**، فهو إذن يقرأ نصوص الصفحة أثناء مروره عليها
 ويقارنها بقاموسٍ مضمَّن داخله. **والفرق الذي يعنيك أن هذه القراءة عابرة للمطابقة وحدها:**
 
 - **لا يُخزَّن شيء مما يُقرأ، ولا يُراكَم، ولا يُرسَل** — لا إلى تخزين، ولا إلى خادم، ولا إلى
   أي مكان. والكتابة الدائمة الوحيدة تفضيلاتُك وتصحيحاتُك التي تكتبها بنفسك.
 - **نصّ المحادثات مستثنًى أصلًا** فلا تلمسه الترجمة — لا رسائلك ولا ردود Claude.
-- **لا تتصل الإضافة بأي خادم من تلقاء نفسها.** لا تحليلات، ولا تتبّع، ولا خدمة خارجية،
-  ولا خادم لنا أصلًا. والاتصالان الوحيدان يقعان **بضغطةٍ منك** ويقصدان ملفات claude.ai
-  العامة وحدها: «فحص الموقع» (ليجد ما استُجدّ ولم يُترجَم) و«طبيب الاتجاه» (ليقرأ
-  ملفات التنسيق) — لا يُرسَل فيهما شيءٌ من عندك، إنما تُقرأ ملفات الموقع.
-- **الاستثناء الوحيد لمغادرة بياناتك جهازك:** إن فعّلتَ المزامنة الاختيارية (وهي مطفأة
-  افتراضيًّا) حمل **كرومُ نفسُه** تصحيحاتِك وقواعدَك — دون إعداداتك ودون شيءٍ من محتواك
+- **لا خادم لنا ولا خدمة خارجية.** لا تحليلات ولا تتبّع. والطلبات الشبكية التي تفتحها
+  الإضافة ثلاثة، كلها تقصد **ملفات الموقع العامة وحدها** (على claude.ai وanthropic.com
+  حيث يقدّم الموقع ملفاته) ولا يُرسَل فيها شيءٌ من عندك: (١) **محرّك الاتجاه** يقرأ تلقائيًّا
+  ملفات التنسيق (CSS) التي حمّلها متصفحك للصفحة نفسها — عند أول تشغيل وعند كل تغيّر في
+  نسخة الموقع — ليبني منها ورقة العكس ويحفظها على جهازك (ويمكنك إيقاف ذلك باختيار المحرّك
+  «المبسّط» في الإعدادات)؛ (٢) «فحص الموقع» (ليجد ما استُجدّ ولم يُترجَم) و(٣) «فحص
+  الاتجاه» (ليُظهر ما لم يُعكس بعد) يجريان **بضغطةٍ منك وحدك**.
+- **الاستثناء الوحيد لمغادرة بياناتك جهازك:** إن فعّلتَ المزامنة الاختيارية (وهي متوقّفة
+  ما لم تُفعّلها) حمل **كرومُ نفسُه** تصحيحاتِك وقواعدَك — دون إعداداتك ودون شيءٍ من محتواك
   أو محادثاتك — إلى حسابك في جوجل بمزامنته المعتادة، لا باتصالٍ تفتحه الإضافة.
   **وجوجل قد تطّلع عليها ما لم تفعّل عبارة مرور المزامنة في كروم نفسه.** وتبقى لك
   أزرار إيقافها ومسح ما رُفع.
-- **لا تطلب صلاحية قراءة بياناتك في المواقع.** الصلاحية الوحيدة `storage` لحفظ تفضيلاتك
-  على جهازك.
+- **لا تطلب الوصول إلى أي موقع غير claude.ai.** وستعرض لك كروم عند التثبيت عبارتها
+  المعيارية «قراءة بياناتك وتغييرها على claude.ai» — وهي الصيغة التي تصف بها كلَّ إضافة
+  تعمل داخل صفحة، ومعناها هنا أن الإضافة تكتب الترجمة داخل الصفحة. والإذن الوحيد الذي
+  تطلبه سوى ذلك `storage` لحفظ تفضيلاتك على جهازك.
 
 نقولها بهذه الدقّة لأن الوعد المتجاوِز أضعفُ من الوعد الدقيق: المشروع مفتوح المصدر،
 فكلُّ سطرٍ من هذا يمكنك التحقق منه بنفسك. التفصيل في [سياسة الخصوصية](PRIVACY.md).
 
 ## التثبيت
 
-**من متجر Chrome:** *(قريبًا)*
+**من متجر Chrome:** *(قريبًا)* — وما الجديد والقيود المعروفة في [سجلّ الإصدارات](web/CHANGELOG.md).
 
 **يدويًّا (نسخة التطوير):**
 
@@ -142,8 +147,10 @@ node tools/serve-tests.mjs
 | `_dirtest.html` | اتجاه نصّ المحادثة |
 | `_scanlocktest.html` | حجز الفحص ونبضه (طبقة السقوط) |
 | `_swtest.html` | تحكيم عامل الخدمة — سيناريوهات التبويبات المتعددة |
-| `_rtltest.html` | محرّك الاتجاه: القلب المنطقي وجزر LTR والناتج المولَّد |
+| `_rtltest.html` | محرّك الاتجاه: العكس المنطقي وجزر LTR والناتج المولَّد |
 | `_termstest.html` | البحث في القاموس والتصحيح الشخصي |
+| `_synctest.html` | المزامنة الاختيارية: التعقيم والدمج والتمزّق والإصلاح |
+| `_thumbtest.html` | المؤشر المنزلق والأسطح التي يحسبها الموقع بنفسه |
 
 ### بنية المشروع
 
@@ -197,11 +204,16 @@ read page text as it walks the DOM, comparing it against a dictionary bundled in
 extension. Those reads are transient and match-only: **nothing read is stored, accumulated, or
 transmitted** — not to storage, not to a server, not anywhere. The only persistent writes are
 your own settings and the corrections you type. Conversation prose is excluded outright, and the
-extension requests no host permissions — only `storage`. The extension never contacts a server of
-its own — there is no server of ours; the only network requests it ever makes happen **when you
-press a button**, and they fetch claude.ai's own public files: the site scan (to find newly added
-untranslated strings) and the direction doctor (to read the site's stylesheets). Nothing of yours
-is sent in either. The one exception to data leaving your device: if you enable the optional
+extension requests no host permissions — only `storage` (Chrome's install screen shows its standard
+"read and change your data on claude.ai" line because the extension writes translations into that
+one site's pages; it asks for no other site). There is no server of ours and no third-party
+service. The extension makes three kinds of network request, all for the site's own public asset
+files (served from claude.ai and anthropic.com), and nothing of yours is sent in any of them:
+(1) the RTL engine automatically reads the stylesheets your browser already loaded for the page — on
+first run and whenever the site ships a new version — to build its mirroring sheet, which it caches
+locally (choose the "simplified" engine in the options to turn this off); (2) the site scan (to find
+newly added untranslated strings) and (3) the direction check (to find styles not yet mirrored)
+run **only when you press a button**. The one exception to data leaving your device: if you enable the optional
 cross-device sync (off by default), the corrections and smart rules you wrote yourself — never
 your settings, and never any of your content or conversations — are carried by Chrome's own sync
 to your Google account, **which Google may be able to read unless you set a sync passphrase in

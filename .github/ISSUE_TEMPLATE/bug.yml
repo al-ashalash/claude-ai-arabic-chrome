@@ -1,0 +1,55 @@
+name: بلاغ عن خلل
+description: الإضافة لا تعمل، أو الاتجاه مكسور، أو شيء في الصفحة تعطّل بعد تفعيلها
+title: "[خلل] "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: إصدار الإضافة
+      description: من chrome://extensions ← بطاقة الإضافة (مثل 1.0.0)
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: المتصفح وإصداره ونظام التشغيل
+      placeholder: "Chrome 141 على Windows 11"
+    validations:
+      required: true
+  - type: input
+    id: page
+    attributes:
+      label: الصفحة أو القسم في claude.ai
+      placeholder: "الإعدادات ← المزامنة، أو محادثة فيها جدول"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: الخطوات لإعادة إظهار الخلل
+      placeholder: |
+        1. افتح …
+        2. اضغط …
+        3. يظهر …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: ما الذي توقّعته، وما الذي حدث؟
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: محرّك الاتجاه المختار في الإعدادات
+      options:
+        - الشامل — الموصى به (الافتراضي)
+        - المبسّط — للطوارئ
+        - لا أعرف
+  - type: textarea
+    id: extra
+    attributes:
+      label: لقطة شاشة أو ملاحظات (اختياري)
+      description: لا تُرفق شيئًا من محادثاتك؛ تكفي لقطة للواجهة.

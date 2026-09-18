@@ -32,6 +32,19 @@ for (const cs of mf.content_scripts || []) {
 need(!mf.permissions.some((p) => /^(?:https?|file|ftp):|^\*|^<all_urls>$/.test(p)), "نطاق مضيف مدسوس في permissions");
 need(mf.background && mf.background.service_worker === "sw.js", "background.service_worker يجب أن يكون sw.js");
 
+// ---- حدود المتجر (فحص الإطلاق 2026-09-18، G16): رفضٌ صامت يُكتشف هنا لا في لوحة المطوّرين ----
+need(typeof mf.name === "string" && mf.name.length <= 75, "name يتجاوز 75 حرفًا: " + (mf.name || "").length);
+need(typeof mf.short_name === "string" && mf.short_name.length <= 16, "short_name يتجاوز 16 حرفًا");
+need(typeof mf.description === "string" && mf.description.length <= 132, "description يتجاوز 132 حرفًا: " + (mf.description || "").length);
+need(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(mf.homepage_url || ""), "homepage_url مفقود أو ليس رابط المستودع");
+for (const [size, file] of Object.entries(mf.icons || {})) {
+  const fp = path.join(EXT, file);
+  if (!fs.existsSync(fp)) continue; // يُبلَّغ عنه في فحص المراجع أدناه
+  const b = fs.readFileSync(fp);
+  const w = b.readUInt32BE(16), h = b.readUInt32BE(20);
+  need(String(w) === size && String(h) === size, "أبعاد الأيقونة " + file + " هي " + w + "×" + h + " لا " + size + "×" + size);
+}
+
 // كل ملف يشير إليه المانيفست موجود فعلًا
 const refs = [];
 for (const cs of mf.content_scripts || []) {

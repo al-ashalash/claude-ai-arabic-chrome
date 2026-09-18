@@ -38,9 +38,15 @@ const DM = /(?:"?defaultMessage"?):\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'
 const CTRL_RE = new RegExp("[\\u0000-\\u001f\\u007f]");
 const seen = new Set([seed]), queue = [seed], msgs = new Set();
 let ok = 0, ghosts = 0, failed = 0;
+// ★ المنشأ: أي حزمةٍ حملت كل نصّ (لحزمة «النصوص بمواضعها» المُعدَّة لفريق الموقع)، وأسماءُ
+// ملفات CSS المُشار إليها في الحزم (لتجديد لقطة sitecss عند تغيّر أسمائها المُجزّأة)
+const PROV = process.argv.includes("--prov");
+const prov = new Map(), cssRefs = new Set();
+const CSS_REF = /[A-Za-z0-9_]+-[A-Za-z0-9_-]{6,}\.css/g;
 
-function chew(tx) {
+function chew(tx, name) {
   for (const m of tx.match(REF) || []) if (!seen.has(m)) { seen.add(m); queue.push(m); }
+  for (const c of tx.match(CSS_REF) || []) cssRefs.add(c);
   let m;
   DM.lastIndex = 0;
   while ((m = DM.exec(tx))) {
@@ -55,16 +61,17 @@ function chew(tx) {
     if (/<\/?[A-Za-z][^>]*>/.test(s)) continue;
     if (/\{/.test(s) && !/^[^{}]*(\{[A-Za-z_$][\w$]*\}[^{}]*)+$/.test(s)) continue;
     msgs.add(s);
+    if (PROV) { const a = prov.get(s); if (a) { if (a.length < 4 && !a.includes(name)) a.push(name); } else prov.set(s, [name]); }
   }
 }
 while (queue.length) {
   const batch = queue.splice(0, 12);
   const texts = await Promise.all(batch.map((n) =>
     fetch(BASE + n).then((r) => (r.ok ? r.text() : (r.status === 404 ? null : undefined))).catch(() => undefined)));
-  for (const t of texts) {
+  for (const [i, t] of texts.entries()) {
     if (t === null) ghosts++;
     else if (t === undefined) failed++;
-    else { ok++; chew(t); }
+    else { ok++; chew(t, batch[i]); }
   }
   if (ok % 300 < 12) process.stdout.write(`\rملفات: ${ok} | طابور: ${queue.length} | نصوص: ${msgs.size}   `);
 }
@@ -85,6 +92,13 @@ const missing = [...msgs].filter((s) =>
 fs.mkdirSync(GLOSSARY, { recursive: true });
 fs.writeFileSync(path.join(GLOSSARY, "_live-catalog.txt"), [...msgs].sort().join("\n") + "\n", "utf8");
 fs.writeFileSync(path.join(GLOSSARY, "_live-missing.txt"), missing.join("\n") + "\n", "utf8");
+if (PROV) {
+  fs.writeFileSync(path.join(GLOSSARY, "_live-provenance.json"), JSON.stringify({
+    entry: seed, base: BASE, harvested: ok, css: [...cssRefs].sort(),
+    strings: Object.fromEntries([...prov.entries()].sort((a, b) => a[0].localeCompare(b[0]))),
+  }), "utf8");
+  console.log(`المنشأ: ${prov.size} نصًّا بحزمها، و${cssRefs.size} ملف CSS مُشارًا إليه → _live-provenance.json`);
+}
 
 // دفعات مرقّمة: نصوصٌ ثابتة ونصوصٌ بمتغيّرات مفصولة (لكلٍّ عقدُ ترجمةٍ مختلف)
 const plain = missing.filter((s) => !/\{[A-Za-z_$][\w$]*\}/.test(s));

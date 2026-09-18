@@ -1,20 +1,20 @@
 # سياسة الخصوصية — تعريب كلود (غير رسمي)
 
-**آخر تحديث: 2026-09-03**
+**آخر تحديث: 2026-09-18**
 
 ## بالعربية
 
-لا يجمع هذا الامتداد أي بيانات شخصية، **ولا يخزّن شيئًا مما يظهر على شاشتك ولا يرسله إلى أي
-جهة**. يعمل بالكامل داخل متصفحك. الاستثناء الوحيد: إن فعّلتَ المزامنة الاختيارية (وهي مطفأة
-افتراضيًّا) رُفعت تصحيحاتُك وقواعدُك — دون إعداداتك ودون شيءٍ من محتواك أو محادثاتك — عبر
+لا تجمع هذه الإضافة أي بيانات شخصية، **ولا تخزّن شيئًا مما يظهر على شاشتك ولا ترسله إلى أي
+جهة**. تعمل بالكامل داخل متصفحك. الاستثناء الوحيد: إن فعّلتَ المزامنة الاختيارية (وهي متوقّفة
+ما لم تُفعّلها) رُفعت تصحيحاتُك وقواعدُك — دون إعداداتك ودون شيءٍ من محتواك أو محادثاتك — عبر
 مزامنة كروم إلى حسابك في جوجل، وتبقى لك أزرار إيقافها ومسح ما رُفع. (التفصيل في قسم
 «المزامنة الاختيارية» أدناه.)
 
 ### كيف يعمل بالضبط — بلا تهويل ولا تهوين
 
-ليترجم الامتداد تسميةً في الواجهة فلا بدّ أن **يطابقها** أولًا. فهو إذن **يقرأ** نصوص
-الصفحة أثناء مروره عليها، ويقارن كل نصّ بقاموسٍ مضمَّن داخل الامتداد نفسه: فإن وجد له
-ترجمةً كتبها مكانه، وإلّا تركه كما هو ونسيه.
+لتترجم الإضافةُ تسميةً في الواجهة فلا بدّ أن **تطابقها** أولًا. فهي إذن **تقرأ** نصوص
+الصفحة أثناء مرورها عليها، وتقارن كل نصّ بقاموسٍ مضمَّن داخل الإضافة نفسها: فإن وجدت له
+ترجمةً كتبتها مكانه، وإلّا تركته كما هو ونسيته.
 
 **والفرق الذي يعنيك:** القراءة **عابرة للمطابقة وحدها**. لا شيء مما يُقرأ يُخزَّن، ولا
 يُراكَم، ولا يُرسَل — لا إلى تخزين، ولا إلى خادم، ولا إلى أي مكان. والكتابة الدائمة الوحيدة
@@ -25,45 +25,50 @@
 
 - **نصّ محادثاتك مستثنًى أصلًا:** الترجمة لا تلمس متن الرسائل إطلاقًا — لا رسائلك ولا ردود
   Claude. (انظر `inChatContent` في `engine.js`.)
-- **لا يحتفظ بشيء:** لا عناوين محادثاتك، ولا أسماء مشاريعك، ولا نصوص رسائلك، ولا أي شيء تراه.
-- **لا خادم لنا ولا خدمة خارجية:** لا تحليلات ولا تتبّع ولا طرف ثالث، وكل ملفاته
-  (القاموس والخطوط) مضمّنة محليًّا. والطلبات الشبكية الوحيدة التي يفتحها الامتداد
-  تقع **بضغطةٍ منك** وتقصد ملفات claude.ai العامة وحدها: «فحص الموقع» و«طبيب
-  الاتجاه» (الموصوفان أدناه) — لا يُرسَل فيهما شيءٌ من عندك. (والمزامنة الاختيارية
-  أدناه لا يفتح لها الامتداد اتصالًا أصلًا: المتصفح نفسه ينقلها ضمن مزامنة حسابك.)
-- **الصلاحية الوحيدة `storage`:** لحفظ تفضيلاتك (تشغيل/إيقاف، الاتجاه، والكلمات التي تصحّحها)
+- **لا تحتفظ بشيء:** لا عناوين محادثاتك، ولا أسماء مشاريعك، ولا نصوص رسائلك، ولا أي شيء تراه.
+- **لا خادم لنا ولا خدمة خارجية:** لا تحليلات ولا تتبّع ولا طرف ثالث، وكل ملفاتها
+  (القاموس والخطوط) مضمّنة محليًّا. والطلبات الشبكية التي تفتحها الإضافة ثلاثة، كلها
+  تقصد **ملفات الموقع العامة وحدها** — على أصل الصفحة نفسه، وclaude.ai، وanthropic.com
+  (فمن هناك يُقدِّم الموقعُ ملفاته) — **ولا يُرسَل في أيٍّ منها شيءٌ من عندك**، إنما
+  تُقرأ ملفات الموقع كما يقرؤها متصفحك. (والمزامنة الاختيارية أدناه لا تفتح لها الإضافة
+  اتصالًا أصلًا: المتصفح نفسه ينقلها ضمن مزامنة حسابك.)
+- **الإذن الوحيد `storage`:** لحفظ تفضيلاتك (تشغيل/إيقاف، الاتجاه، والكلمات التي تصحّحها)
   محليًّا على جهازك. لا تُشارَك مع أي جهة إلا ما اخترته أنت في «المزامنة الاختيارية» أدناه.
-- **«فحص الموقع» يجري بضغطة منك وحدك:** ولا يقرأ إلا ملفات البرمجة العامة للموقع (وهي نفسها
-  التي ينزّلها متصفحك لعرض الصفحة) ليستخرج منها نصوص الواجهة ويعرف ما لم يُترجَم بعد.
-  **لا يمسّ صفحتك ولا محتواك**، والنتيجة تبقى على جهازك.
-
-- **«طبيب الاتجاه» كذلك يجري بضغطة منك وحدك:** يقرأ ملفات التنسيق (CSS) العامة للموقع
-  ليكشف ما استجدّ منها ولا يقلبه محرّك الاتجاه بعد. ونطاق ما يطلبه الفحصان: أصلُ الصفحة
-  نفسه، وclaude.ai، وanthropic.com (فمن هناك يُقدِّم الموقعُ ملفاته) — **ولا يُرسَل في
-  أيٍّ منهما شيءٌ من عندك**، إنما تُقرأ ملفات الموقع كما يقرؤها متصفحك.
+  (وستعرض لك كروم عند التثبيت عبارتها المعيارية «قراءة بياناتك وتغييرها على claude.ai»
+  لأن الإضافة تكتب الترجمة داخل صفحات هذا الموقع وحده — ولا تطلب أي موقع آخر.)
+- **(١) محرّك الاتجاه يقرأ ملفات التنسيق تلقائيًّا:** المحرّك «الشامل» (الافتراضي) يأخذ
+  عناوين ملفات التنسيق (CSS) التي حمّلها متصفحك للصفحة نفسها، ويقرؤها نصًّا عند أول
+  تشغيل وعند كل تغيّر في نسخة الموقع، ليبني منها ورقة العكس ويحفظها على جهازك (حتى
+  ٢ ميغابايت في `storage`). لا يقرأ صفحتك ولا محتواك، ولا يُرسَل شيء. ويمكنك إيقاف
+  هذه القراءة التلقائية باختيار المحرّك «المبسّط» في الإعدادات (ورقةٌ ثابتة مضمّنة).
+- **(٢) «فحص الموقع» يجري بضغطة منك وحدك:** ولا يقرأ إلا ملفات البرمجة العامة للموقع (وهي
+  نفسها التي ينزّلها متصفحك لعرض الصفحة) نصًّا ليستخرج منها عبارات الواجهة ويعرف ما لم
+  يُترجَم بعد — ولا يُنفَّذ منها شيء. **لا يمسّ صفحتك ولا محتواك**، والنتيجة تبقى على جهازك.
+- **(٣) «فحص الاتجاه» كذلك يجري بضغطة منك وحدك:** يقرأ ملفات التنسيق العامة نفسها ليكشف
+  ما استجدّ منها ولا يعكسه محرّك الاتجاه بعد. والنتيجة تبقى على جهازك.
 
 - **عند الإزالة:** يمحو المتصفح تلقائيًّا كل ما حُفظ محليًّا؛ لا يبقى شيء ولا يُرسَل شيء.
   (ما في مساحة المزامنة — إن كنت فعّلتها — يتبع حسابك لا جهازك؛ انظر القسم التالي.)
 
 ### المزامنة الاختيارية بين أجهزتك
 
-الاستثناء الوحيد للقاعدة أعلاه: إن فعّلتَ المزامنة الاختيارية (وهي مطفأة افتراضيًّا) رُفعت
+الاستثناء الوحيد للقاعدة أعلاه: إن فعّلتَ المزامنة الاختيارية (وهي متوقّفة ما لم تُفعّلها) رُفعت
 تصحيحاتُك وقواعدُك — دون إعداداتك ودون شيءٍ من محتواك أو محادثاتك — عبر مزامنة كروم إلى
 حسابك في جوجل، وتبقى لك أزرار إيقافها ومسح ما رُفع. وتفصيل ذلك:
 
-- **مطفأة افتراضيًّا**، ولا تُفعَّل إلا بموافقة صريحة من صفحة الإعدادات، بعد لوحةٍ تعرض
+- **متوقّفة ما لم تُفعّلها**، ولا تُفعَّل إلا بموافقة صريحة من صفحة الإعدادات، بعد لوحةٍ تعرض
   عليك كلَّ ما يلي قبل الكتابة.
 - **ما الذي يُرفع:** تصحيحاتُك التي كتبتها بنفسك وقواعدُك الذكية — لا غير.
-- **إلى أين:** بنية مزامنة كروم (`chrome.storage.sync`) المرتبطة بحسابك في جوجل. الامتداد
-  نفسه لا يفتح أي اتصال شبكي؛ المتصفح هو من ينقل هذه البيانات ضمن مزامنة حسابك.
+- **إلى أين:** بنية مزامنة كروم (`chrome.storage.sync`) المرتبطة بحسابك في جوجل. الإضافة
+  نفسها لا تفتح أي اتصال شبكي؛ المتصفح هو من ينقل هذه البيانات ضمن مزامنة حسابك.
   **وجوجل قد تطّلع عليها ما لم تفعّل عبارة مرور المزامنة في كروم نفسه.**
 - **ما لا يُرفع أبدًا:** إعداداتك (تبقى لكل جهاز على حدة)، ونتائج الفحص، وأي شيء يُقرأ
   من الصفحات.
 - **التعطيل لا يمسح ما رُفع:** إيقاف المزامنة يوقف الرفع من جهازك ولا يمسّ ما في حسابك —
-  ولذلك في صفحة الإعدادات زرٌّ مستقل «امسح ما رُفع من حسابك» يمحو بيانات الامتداد وحدها
+  ولذلك في صفحة الإعدادات زرٌّ مستقل «مسح ما رُفع من حسابك» يمحو بيانات الإضافة وحدها
   من مساحة المزامنة.
-- **عند إزالة الامتداد:** ما في مساحة المزامنة قد يبقى في حسابك ويعود عند إعادة التثبيت —
-  فإن أردت محوه يقينًا فاضغط «امسح ما رُفع من حسابك» قبل الإزالة.
+- **عند إزالة الإضافة:** ما في مساحة المزامنة قد يبقى في حسابك ويعود عند إعادة التثبيت —
+  فإن أردت محوه يقينًا فاضغط «مسح ما رُفع من حسابك» قبل الإزالة.
 
 ### كيف أُنجزت الترجمة
 
@@ -75,7 +80,7 @@
 صحّحه لنفسك في ثانية، أو اقترحه للجميع على مستودع المشروع — فالمشروع مفتوح المصدر، والقاموس
 كله متاح للقراءة والتدقيق.
 
-الامتداد مستقل وغير رسمي، وليس من إنتاج شركة Anthropic ولا تابعًا لها. «Claude» و«Claude.ai»
+الإضافة مستقلة وغير رسمية، وليست من إنتاج شركة Anthropic ولا تابعة لها. «Claude» و«Claude.ai»
 علامتان تجاريتان لمالكهما.
 
 ---
@@ -108,23 +113,29 @@ project is open source, so every line of this is yours to verify.
   yours nor Claude's. (See `inChatContent` in `engine.js`.)
 - **It keeps nothing:** no chat titles, project names, message text, or anything else you see.
 - **No server of ours, and no third-party service:** no analytics, no tracking; all files
-  (dictionary and fonts) are bundled locally. The only network requests the extension ever opens
-  happen **when you press a button** and fetch claude.ai's own public files: the site scan and the
-  direction doctor (both below) — nothing of yours is sent in either. (The optional sync below
-  opens no connection at all from the extension: the browser itself carries that data as part of
-  your account's sync.)
+  (dictionary and fonts) are bundled locally. The extension opens three kinds of network request,
+  all of them for **the site's own public asset files only** — on the page's own origin, claude.ai,
+  and anthropic.com (where the site serves its assets from) — and **nothing of yours is sent in any
+  of them**; they read the site's files as your browser does. (The optional sync below opens no
+  connection at all from the extension: the browser itself carries that data as part of your
+  account's sync.)
 - **The only permission, `storage`,** saves your preferences (on/off, direction, and terms you
   fix) locally on your device. Nothing is shared beyond what you yourself opt into under
-  "Optional sync" below.
-- **"Site scan" runs only when you press the button,** and reads only the site's public JavaScript
-  bundles — the same files your browser already downloads to render the page — to extract
-  interface strings and find those not translated yet. **It does not touch your page or your
-  content**, and the result stays on your device.
-
-- **"Direction doctor" likewise runs only when you press it:** it reads the site's public CSS to
-  find newly shipped rules the direction engine does not mirror yet. Both features request only
-  the page's own origin, claude.ai, and anthropic.com (where the site serves its assets from) —
-  and **neither sends anything of yours**; they read the site's files as your browser does.
+  "Optional sync" below. (Chrome's install screen shows its standard "read and change your data on
+  claude.ai" line because the extension writes translations into that one site's pages; it asks
+  for no other site.)
+- **(1) The direction engine reads the site's stylesheets automatically:** the "comprehensive"
+  engine (the default) takes the URLs of the CSS files your browser already loaded for the page and
+  fetches them as text — on first run and whenever the site ships a new version — to build its
+  mirroring sheet, which it caches on your device (up to 2 MB in `storage`). It reads neither your
+  page nor your content, and sends nothing. Choosing the "simplified" engine in the options turns
+  this automatic read off (a fixed bundled sheet is used instead).
+- **(2) "Site scan" runs only when you press the button,** and reads only the site's public
+  JavaScript bundles — the same files your browser already downloads to render the page — as text,
+  to extract interface strings and find those not translated yet; nothing fetched is ever executed.
+  **It does not touch your page or your content**, and the result stays on your device.
+- **(3) "Direction check" likewise runs only when you press it:** it reads the same public CSS to
+  find newly shipped rules the direction engine does not mirror yet. The result stays on your device.
 
 - **On uninstall,** the browser automatically erases everything stored locally. (Data in the
   sync area — if you ever enabled sync — follows your account, not your device; see the next

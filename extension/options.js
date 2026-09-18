@@ -1293,7 +1293,7 @@
     if ($("exportSrcBare")) $("exportSrcBare").addEventListener("click", function () { exportSource(true); });
     if ($("exportSrcFull")) $("exportSrcFull").addEventListener("click", function () { exportSource(false); });
     // زرّ استيراد واحد (scanImportBtn أدناه) يقبل ملفات الترجمة والنسخ الاحتياطية معًا —
-    // أُزيل الزرّ المكرر بقرار المالك 2026-08-16
+    // أُزيل الزرّ المكرر بقرار المشروع 2026-08-16
     if ($("termFilter")) $("termFilter").addEventListener("change", renderTerms);
     $("clearAllOv").addEventListener("click", function () {
       if (!confirm("حذف كل تصحيحاتك وقواعدك الذكية؟ لا يمكن التراجع.")) return;

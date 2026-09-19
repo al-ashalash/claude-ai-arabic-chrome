@@ -3,8 +3,8 @@
 ## 1.0.0 — الإصدار الأول
 
 ### ما تفعله الإضافة
-- **ترجمة واجهة claude.ai** بقاموس فيه أكثر من 27,900 مفردة يغطي نحو 96% من نصوص الموقع،
-  وأكثر من 3,200 قاعدة ذكية للنصوص المتغيّرة، وصيغ الجمع العربية الست. المصطلحات مُسنَدة إلى
+- **ترجمة واجهة claude.ai** بقاموس فيه أكثر من 28,300 مفردة يغطي نحو 96% من نصوص الموقع،
+  وأكثر من 3,300 قاعدة ذكية للنصوص المتغيّرة، وصيغ الجمع العربية الست. المصطلحات مُسنَدة إلى
   معجم البيانات والذكاء الاصطناعي (مجمع الملك سلمان العالمي للغة العربية وسدايا، الإصدار الثالث).
 - **الاتجاه من اليمين إلى اليسار** بمحرّكين: «الشامل» (الافتراضي) يبني ورقة العكس من ملفات تصميم
   الموقع نفسها ويعيد بناءها كلما تغيّرت نسخته، و«المبسّط» ورقة ثابتة مضمّنة للطوارئ. اتجاه مستقل
@@ -28,8 +28,8 @@
 ## 1.0.0 — First release
 
 ### What it does
-- **Translates the claude.ai interface** with a dictionary of 27,900+ strings covering about 96% of
-  the site's text, 3,200+ smart rules for variable strings, and the six Arabic plural forms. AI
+- **Translates the claude.ai interface** with a dictionary of 28,300+ strings covering about 96% of
+  the site's text, 3,300+ smart rules for variable strings, and the six Arabic plural forms. AI
   terminology is anchored to the Data & AI Glossary (King Salman Global Academy for Arabic Language
   and SDAIA, 3rd edition).
 - **Right-to-left layout** with two engines: "comprehensive" (default) builds its mirroring sheet

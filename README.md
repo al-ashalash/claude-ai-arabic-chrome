@@ -192,6 +192,10 @@ proper right-to-left layout.
 
 Independent and unofficial · fully local · one permission (`storage`) · open source
 
+<img src="docs/screenshots/arabic-ui-en.png" alt="The claude.ai interface in Arabic with the extension on" width="100%">
+
+<img src="docs/screenshots/before-after-en.png" alt="The same screen before and after" width="100%">
+
 ## Why
 
 claude.ai's interface officially supports eleven languages; Arabic is not among them. RTL support

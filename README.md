@@ -33,7 +33,7 @@
 - **لا يُخزَّن شيء مما يُقرأ، ولا يُراكَم، ولا يُرسَل** — لا إلى تخزين، ولا إلى خادم، ولا إلى
   أي مكان. والكتابة الدائمة الوحيدة تفضيلاتُك وتصحيحاتُك التي تكتبها بنفسك.
 - **نصّ المحادثات مستثنًى أصلًا** فلا تلمسه الترجمة — لا رسائلك ولا ردود Claude.
-- **لا خادم لنا ولا خدمة خارجية.** لا تحليلات ولا تتبّع. والطلبات الشبكية التي تفتحها
+- **لا تجمع الإضافة بيانات عنك ولا عن استعمالك.** والطلبات الشبكية التي تفتحها
   الإضافة ثلاثة، كلها تقصد **ملفات الموقع العامة وحدها** (على claude.ai وanthropic.com
   حيث يقدّم الموقع ملفاته) ولا يُرسَل فيها شيءٌ من عندك: (١) **محرّك الاتجاه** يقرأ تلقائيًّا
   ملفات التنسيق (CSS) التي حمّلها متصفحك للصفحة نفسها — عند أول تشغيل وعند كل تغيّر في
@@ -101,7 +101,7 @@ node tools/build-firefox.mjs
 ومرّ كل نصّ بتدقيق آلي (تغطية، وسلامة المتغيّرات، واتساق المصطلح) ثم مراجعة.
 
 **ونصرّح بهذا لأن من حقّك أن تعرف كيف صُنع ما تقرؤه.** ومع ذلك تبقى فيه أخطاء ولا بدّ —
-ولهذا صُنعت «الكلمات المحفوظة»: صحّح ما استُشكل عليك لنفسك في ثانية، أو
+ولهذا صُنعت «الكلمات المحفوظة»: صحّح ما استُشكل عليك لنفسك في أي وقت، أو
 [افتح مسألة](https://github.com/al-ashalash/claude-ai-arabic-chrome/issues) لتصحيحه للجميع.
 
 ---
@@ -206,8 +206,8 @@ transmitted** — not to storage, not to a server, not anywhere. The only persis
 your own settings and the corrections you type. Conversation prose is excluded outright, and the
 extension requests no host permissions — only `storage` (Chrome's install screen shows its standard
 "read and change your data on claude.ai" line because the extension writes translations into that
-one site's pages; it asks for no other site). There is no server of ours and no third-party
-service. The extension makes three kinds of network request, all for the site's own public asset
+one site's pages; it asks for no other site). The extension collects no data about you or your
+usage. It makes three kinds of network request, all for the site's own public asset
 files (served from claude.ai and anthropic.com), and nothing of yours is sent in any of them:
 (1) the RTL engine automatically reads the stylesheets your browser already loaded for the page — on
 first run and whenever the site ships a new version — to build its mirroring sheet, which it caches

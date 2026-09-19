@@ -26,8 +26,8 @@
 - **نصّ محادثاتك مستثنًى أصلًا:** الترجمة لا تلمس متن الرسائل إطلاقًا — لا رسائلك ولا ردود
   Claude. (انظر `inChatContent` في `engine.js`.)
 - **لا تحتفظ بشيء:** لا عناوين محادثاتك، ولا أسماء مشاريعك، ولا نصوص رسائلك، ولا أي شيء تراه.
-- **لا خادم لنا ولا خدمة خارجية:** لا تحليلات ولا تتبّع ولا طرف ثالث، وكل ملفاتها
-  (القاموس والخطوط) مضمّنة محليًّا. والطلبات الشبكية التي تفتحها الإضافة ثلاثة، كلها
+- **لا تجمع بيانات ولا تستعين بخدمة خارجية:** كل ملفاتها (القاموس والخطوط) مضمّنة
+  محليًّا. والطلبات الشبكية التي تفتحها الإضافة ثلاثة، كلها
   تقصد **ملفات الموقع العامة وحدها** — على أصل الصفحة نفسه، وclaude.ai، وanthropic.com
   (فمن هناك يُقدِّم الموقعُ ملفاته) — **ولا يُرسَل في أيٍّ منها شيءٌ من عندك**، إنما
   تُقرأ ملفات الموقع كما يقرؤها متصفحك. (والمزامنة الاختيارية أدناه لا تفتح لها الإضافة
@@ -77,7 +77,7 @@
 المستخدم من حقه أن يعرف كيف صُنع ما يقرؤه.
 
 ومع ذلك تبقى في الترجمة أخطاء ولا بدّ. **ولهذا صُنعت «الكلمات المحفوظة»**: ما استُشكل عليك
-صحّحه لنفسك في ثانية، أو اقترحه للجميع على مستودع المشروع — فالمشروع مفتوح المصدر، والقاموس
+صحّحه لنفسك في أي وقت، أو اقترحه للجميع على مستودع المشروع — فالمشروع مفتوح المصدر، والقاموس
 كله متاح للقراءة والتدقيق.
 
 الإضافة مستقلة وغير رسمية، وليست من إنتاج شركة Anthropic ولا تابعة لها. «Claude» و«Claude.ai»
@@ -112,8 +112,8 @@ project is open source, so every line of this is yours to verify.
 - **Conversation content is excluded outright:** translation never touches message prose — neither
   yours nor Claude's. (See `inChatContent` in `engine.js`.)
 - **It keeps nothing:** no chat titles, project names, message text, or anything else you see.
-- **No server of ours, and no third-party service:** no analytics, no tracking; all files
-  (dictionary and fonts) are bundled locally. The extension opens three kinds of network request,
+- **Collects no data and uses no external service:** all files (dictionary and fonts) are
+  bundled locally. The extension opens three kinds of network request,
   all of them for **the site's own public asset files only** — on the page's own origin, claude.ai,
   and anthropic.com (where the site serves its assets from) — and **nothing of yours is sent in any
   of them**; they read the site's files as your browser does. (The optional sync below opens no

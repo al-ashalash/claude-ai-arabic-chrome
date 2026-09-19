@@ -1,8 +1,6 @@
 <div dir="rtl">
 
-<img src="docs/icon128.png" alt="" width="96" align="right">
-
-# تعريب كلود للويب
+# <img src="docs/icon128.png" alt="" width="44" align="top"> تعريب كلود للويب
 
 **إضافة متصفح تعرض واجهة [claude.ai](https://claude.ai) بالعربية، بالاتجاه من اليمين إلى اليسار.**
 
@@ -14,6 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <img src="docs/screenshots/arabic-ui.png" alt="واجهة claude.ai بالعربية بعد تفعيل الإضافة" width="100%">
+
+<img src="docs/screenshots/before-after.png" alt="الشاشة نفسها قبل التعريب وبعده" width="100%">
 
 ---
 
@@ -190,7 +190,7 @@ test/           الاختبارات
 
 <div dir="ltr">
 
-# Claude Web — Arabic Localization
+# <img src="docs/icon128.png" alt="" width="44" align="top"> Claude Web — Arabic Localization
 
 A browser extension that renders the [claude.ai](https://claude.ai) interface in Arabic, with
 proper right-to-left layout.

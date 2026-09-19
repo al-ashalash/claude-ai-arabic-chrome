@@ -6,11 +6,6 @@
 
 مشروع مستقل غير رسمي · محليّ بالكامل · إذن واحد (`storage`) · مفتوح المصدر
 
-<!-- الشارات: حالة CI والترخيص؛ وشارة متجر Chrome تُضاف بعد القبول:
-     [![Chrome Web Store](https://img.shields.io/chrome-web-store/v/<ID>)](https://chromewebstore.google.com/detail/<ID>) -->
-[![CI](https://github.com/al-ashalash/claude-ai-arabic-chrome/actions/workflows/ci.yml/badge.svg)](https://github.com/al-ashalash/claude-ai-arabic-chrome/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
 <img src="docs/screenshots/arabic-ui.png" alt="واجهة claude.ai بالعربية بعد تفعيل الإضافة" width="100%">
 
 <img src="docs/screenshots/before-after.png" alt="الشاشة نفسها قبل التعريب وبعده" width="100%">

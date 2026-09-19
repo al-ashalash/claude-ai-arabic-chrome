@@ -17,7 +17,7 @@
 - نحو 4% من نصوص الموقع لا تُترجَم عمدًا أو تعذّر تعميمها: أسماء منتجات ومعرّفات وقيم متغيّرة
   وحدها، ونصوص متغيّرة قصيرة جدًّا لا تصلح قاعدةً آمنة.
 - الترجمة الآلية المدقَّقة ليست معصومة — وُجد «التصحيح الشخصي» لهذا، والمسائل على GitHub مرحّب بها.
-- **فايرفوكس 127+** لا يمنح الإذن عند التثبيت؛ يُمنح من صفحة الإعدادات (انظر README).
+- **المتصفحات**: كروم وسائر متصفحات Chromium (إيدج، Brave، Opera). فايرفوكس غير مدعوم رسميًّا بعد (نسخة تجريبية للمطوّرين في README).
 - نصّ محادثاتك مستثنًى من الترجمة أصلًا؛ ولا تترجم الإضافة محتوى المُخرَجات (Artifacts).
 
 ### التثبيت اليدوي
@@ -48,8 +48,8 @@
   safe rule.
 - Reviewed machine translation is not infallible — that is what personal corrections are for, and
   issues on GitHub are welcome.
-- **Firefox 127+** does not grant the site permission on install; grant it from the options page
-  (see README).
+- **Browsers**: Chrome and other Chromium browsers (Edge, Brave, Opera). Firefox is not officially
+  supported yet (a developer-only build is described in the README).
 - Conversation text is excluded from translation by design; the extension does not translate the
   content of Artifacts.
 

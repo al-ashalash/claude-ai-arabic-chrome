@@ -90,7 +90,7 @@
 بُني هذا القاموس **بمعونة [Claude Code](https://claude.com/claude-code)** (أداة Anthropic
 للبرمجة بالذكاء الاصطناعي)، على قواعد مصطلحية ثابتة وضعها صاحب المشروع:
 
-- ما يبقى إنجليزيًّا (العلامات التجارية والمصطلحات التقنية) وما يُترجَم.
+- ما يُترجَم، وما يبقى إنجليزيًّا بلا ترجمة (العلامات التجارية والمصطلحات التقنية).
 - مصطلحاتُ الذكاء الاصطناعي مُسنَدةٌ إلى **معجم البيانات والذكاء الاصطناعي** (مجمع الملك سلمان العالمي للغة العربية وسدايا، الإصدار الثالث على منصة سوار) حيث وافق مقابلُ المعجم سياقَ الواجهة، وإلا فالمعروفُ في واجهات الأجهزة مع تسجيل مقابل المعجم بديلًا.
 - نمط «الترجمة (English)» للعناوين المستقلة، والعربيةُ وحدها داخل الجُمل.
 - توحيد المصطلح الواحد عبر ثمانيةٍ وعشرين ألف نصّ.
@@ -277,7 +277,7 @@ it from the Chrome Web Store, or manually with the steps above from `edge://exte
 The dictionary was built **with the help of [Claude Code](https://claude.com/claude-code)**
 (Anthropic's AI coding tool), following a fixed terminology rulebook set by the project's author:
 
-- What stays in English (brand names and technical terms) and what is translated.
+- What is translated, and what stays untranslated in English (brand names and technical terms).
 - AI terminology is anchored to the **Data and AI Glossary** (King Salman Global Academy for Arabic
   Language and SDAIA, 3rd edition on the Siwar platform) wherever the glossary's equivalent fits
   the interface context; otherwise the term users already know from their devices is used, and the

@@ -59,7 +59,7 @@
 
 ## التثبيت
 
-**من متجر Chrome:** *(قريبًا)* — وما الجديد والقيود المعروفة في [سجلّ الإصدارات](CHANGELOG.md).
+**من متجر Chrome (الطريقة الموصى بها):** [ثبّت الإضافة من المتجر](https://chromewebstore.google.com/detail/ilebkilcahbijffokjmlakbocdjkojbe) — تثبيتٌ بضغطة وتحديثٌ تلقائي. وما الجديد والقيود المعروفة في [سجلّ الإصدارات](CHANGELOG.md).
 
 **يدويًّا (نسخة التطوير):**
 
@@ -247,8 +247,8 @@ open source: verify it yourself. Details in the [privacy policy](PRIVACY.md).
 
 ## Install
 
-**From the Chrome Web Store:** *(coming soon)* — what's new and known limitations are in the
-[changelog](CHANGELOG.md).
+**From the Chrome Web Store (recommended):** [install from the store](https://chromewebstore.google.com/detail/ilebkilcahbijffokjmlakbocdjkojbe) — one-click install
+and automatic updates. What's new and known limitations are in the [changelog](CHANGELOG.md).
 
 **Manually (development build):**
 

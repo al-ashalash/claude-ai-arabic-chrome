@@ -20,8 +20,8 @@
 - **المتصفحات**: كروم وسائر متصفحات Chromium (إيدج، Brave، Opera). فايرفوكس غير مدعوم رسميًّا بعد (نسخة تجريبية للمطوّرين في README).
 - نصّ محادثاتك مستثنًى من الترجمة أصلًا؛ ولا تترجم الإضافة محتوى المُخرَجات (Artifacts).
 
-### التثبيت اليدوي
-`chrome://extensions` ← وضع المطوّر ← تحميل غير محزومة ← المجلد `extension/`.
+### التثبيت
+من [متجر Chrome](https://chromewebstore.google.com/detail/ilebkilcahbijffokjmlakbocdjkojbe) (تحديث تلقائي)، أو يدويًّا: `chrome://extensions` ← وضع المطوّر ← تحميل غير محزومة ← المجلد `extension/`.
 
 ---
 
@@ -53,5 +53,5 @@
 - Conversation text is excluded from translation by design; the extension does not translate the
   content of Artifacts.
 
-### Manual install
-`chrome://extensions` → Developer mode → Load unpacked → the `extension/` folder.
+### Install
+From the [Chrome Web Store](https://chromewebstore.google.com/detail/ilebkilcahbijffokjmlakbocdjkojbe) (automatic updates), or manually: `chrome://extensions` → Developer mode → Load unpacked → the `extension/` folder.
